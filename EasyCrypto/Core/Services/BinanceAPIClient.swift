@@ -124,6 +124,47 @@ nonisolated enum BinanceSigner {
     }
 }
 
+// MARK: - Server Time Sync
+
+nonisolated struct BinanceServerTimeResponse: Sendable, Codable {
+    let serverTime: Int64
+}
+
+/// Caches the offset between local clock and Binance server clock.
+/// Thread-safe via actor isolation.
+actor BinanceTimeSynchronizer {
+    private var offsetMs: Int64 = 0
+    private var lastSyncDate: Date?
+    private let session: URLSession
+    private let syncInterval: TimeInterval = 300 // re-sync every 5 minutes
+
+    init(session: URLSession = .shared) {
+        self.session = session
+    }
+
+    func adjustedTimestamp() async -> Int64 {
+        if lastSyncDate == nil || Date().timeIntervalSince(lastSyncDate!) > syncInterval {
+            await syncServerTime()
+        }
+        return Int64(Date().timeIntervalSince1970 * 1000) + offsetMs
+    }
+
+    private func syncServerTime() async {
+        guard let url = URL(string: "https://api.binance.com/api/v3/time") else { return }
+        do {
+            let localBefore = Int64(Date().timeIntervalSince1970 * 1000)
+            let (data, _) = try await session.data(for: URLRequest(url: url))
+            let localAfter = Int64(Date().timeIntervalSince1970 * 1000)
+            let serverTime = try JSONDecoder().decode(BinanceServerTimeResponse.self, from: data)
+            let localMid = (localBefore + localAfter) / 2
+            offsetMs = serverTime.serverTime - localMid
+            lastSyncDate = Date()
+        } catch {
+            // If sync fails, keep previous offset (0 on first failure)
+        }
+    }
+}
+
 // MARK: - URL Builder
 
 nonisolated enum BinanceURLBuilder {
@@ -210,12 +251,14 @@ extension BinanceAPIClient {
         keychain: KeychainService = .live(),
         session: URLSession = .shared
     ) -> BinanceAPIClient {
-        BinanceAPIClient(
+        let timeSynchronizer = BinanceTimeSynchronizer(session: session)
+
+        return BinanceAPIClient(
             fetchAccount: {
                 guard let credentials = try keychain.load() else {
                     throw BinanceError.noCredentialsConfigured
                 }
-                let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
+                let timestamp = await timeSynchronizer.adjustedTimestamp()
                 guard let url = BinanceURLBuilder.buildSignedURL(
                     path: "/api/v3/account",
                     params: [("omitZeroBalances", "true")],
@@ -248,7 +291,7 @@ extension BinanceAPIClient {
                 guard let credentials = try keychain.load() else {
                     throw BinanceError.noCredentialsConfigured
                 }
-                let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
+                let timestamp = await timeSynchronizer.adjustedTimestamp()
                 var params: [(String, String)] = [
                     ("symbol", symbol),
                     ("limit", "1000"),
