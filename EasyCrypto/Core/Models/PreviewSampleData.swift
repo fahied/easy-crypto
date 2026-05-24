@@ -8,6 +8,7 @@ import SwiftData
 
 enum PreviewSampleData {
 
+    @MainActor
     static var container: ModelContainer {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try! ModelContainer(
