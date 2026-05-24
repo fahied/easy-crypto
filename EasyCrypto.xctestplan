@@ -24,14 +24,6 @@
         "identifier" : "5B2259992FC2B9F000C8D872",
         "name" : "EasyCryptoTests"
       }
-    },
-    {
-      "parallelizable" : true,
-      "target" : {
-        "containerPath" : "container:EasyCrypto.xcodeproj",
-        "identifier" : "5B2259A32FC2B9F000C8D872",
-        "name" : "EasyCryptoUITests"
-      }
     }
   ],
   "version" : 1
