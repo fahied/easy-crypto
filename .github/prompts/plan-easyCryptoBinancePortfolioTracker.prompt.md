@@ -21,6 +21,65 @@ Also consult:
 
 ---
 
+### Development Methodology — TDD (Test-Driven Development)
+
+**Every step follows Red → Green → Refactor.** Tests are written BEFORE implementation code.
+
+#### Workflow per Step
+1. **Red** — Write failing tests first using Swift Testing framework (BDD-style naming). Tests define the expected behavior.
+2. **Green** — Write the minimum implementation to make tests pass.
+3. **Refactor** — Clean up implementation while keeping tests green.
+4. **Coverage gate** — After each step, verify ≥ 80% code coverage for the files touched. Do not proceed to the next step until this is met.
+
+#### BDD Test Naming Convention
+Use descriptive `@Suite` and `@Test` display names that read as behavioral specifications:
+
+```swift
+@Suite("Given a portfolio with BTC and ETH trades")
+struct PortfolioWithMultipleCoins {
+    @Test("When refreshing, then it computes total invested in USDT")
+    func computesTotalInvested() async { ... }
+
+    @Test("When BTC price increases, then unrealized P&L is positive")
+    func unrealizedPnLPositive() async { ... }
+}
+```
+
+Structure: **Given** (context in `@Suite`) → **When/Then** (behavior in `@Test`)
+
+#### Test Rules (from swift-testing-expert skill)
+- Use `#expect` as the default assertion; use `#require` only when subsequent lines depend on a prerequisite value
+- Prefer `struct` suites for value-semantic isolation between tests
+- Use parameterized `@Test(arguments:)` for data-driven scenarios instead of duplicating test methods
+- Use traits: `.enabled(if:)`, `.disabled(...)`, `.timeLimit(...)`, `.bug(...)`, tags for filtering
+- Use `withDependencies { }` from swift-dependencies for mocking in processor tests
+- Keep tests parallel-safe by default; use `.serialized` only with documented rationale
+- Use `withKnownIssue { }` for temporary known failures instead of disabling tests
+
+#### Coverage Requirements
+- **Minimum 80% line coverage** per step, measured on the files created/modified in that step
+- Core business logic (`FIFOCalculator`, `Holding`, `PortfolioSummary`) should target **≥ 90%**
+- Networking layer tested via swift-dependencies mock injection (no real HTTP calls in tests)
+- SwiftData models tested with in-memory `ModelContainer`
+
+#### What Gets Tested at Each Phase
+
+| Phase | Test Suites Written BEFORE Implementation |
+|---|---|
+| 1.1 (Models) | `TradeModelTests`, `SyncMetadataTests`, `HoldingTests`, `PortfolioSummaryTests` |
+| 1.2 (Keychain) | `KeychainServiceTests` |
+| 1.3 (API Client) | `BinanceAPIClientTests` (HMAC signing, URL construction, error mapping) |
+| 1.4 (FIFO) | `FIFOCalculatorTests` (all scenarios) |
+| 1.5 (Import) | `TradeImportServiceTests` (pagination, mapping, incremental sync) |
+| 1.6 (Price) | `PriceServiceTests` (batch fetch, symbol mapping) |
+| 2.1 (MVI Base) | `ProcessorTests` (intent dispatch, state mutation) |
+| 2.2 (Portfolio) | `PortfolioProcessorTests` (refresh, sort, P&L computation) |
+| 2.3 (Holdings) | `HoldingsProcessorTests`, `CoinDetailProcessorTests` |
+| 2.4 (History) | `TradeHistoryProcessorTests` (load, filter) |
+| 2.5 (Settings) | `SettingsProcessorTests` (save/delete/test connection) |
+
+---
+
 ### Phase 1: Foundation (Core Infrastructure)
 
 **Step 1.1 — SwiftData Models** *(parallel with 1.2–1.4)*
@@ -97,14 +156,115 @@ Also consult:
 - `TradeRowView` — reusable trade row (date, side, price, qty, total)
 - Dark mode default, semantic profit/loss colors
 
+**Every design system component MUST include `#Preview` blocks** covering its most common use cases (see Preview Requirements below).
+
 ---
 
-### Phase 5: Testing *(start after Step 1.4, parallel with Phase 2)*
+### Preview Requirements *(applies to ALL SwiftUI views and components)*
 
-- `FIFOCalculatorTests` — simple sell, partial sell, DCA averaging, full close, edge cases
-- `BinanceAPIClientTests` — HMAC signature correctness, URL construction
-- `HoldingCalculationTests` — weighted average cost, P&L accuracy
-- SwiftData integration tests with mock data
+Every SwiftUI view must include `#Preview` blocks that cover its most common visual states. Previews serve as living documentation and visual regression checks.
+
+#### Rules
+- Use named previews: `#Preview("State Name") { ... }`
+- Seed in-memory `ModelContainer` for any views that depend on SwiftData
+- Use mock dependency overrides via `withDependencies` where processors are involved
+- Cover at minimum: **happy path**, **empty state**, **error state**, **loading state** (where applicable)
+
+#### Required Previews per View
+
+| View | Required Preview Cases |
+|---|---|
+| `GlassCard` | Default content, long text, nested content |
+| `PnLLabel` | Positive P&L, negative P&L, zero/neutral |
+| `MetricCard` | With subtitle, without subtitle, large value |
+| `TradeRowView` | Buy trade (green), Sell trade (red) |
+| Portfolio Tab | Loaded with holdings, empty (no trades), loading, error |
+| Holdings List | Multiple coins, single coin, empty |
+| Coin Detail | With chart data, without chart data, loading |
+| Trade History | Filtered by coin, all trades, empty |
+| Settings | No API key (onboarding), API key saved, connection test result |
+
+---
+
+### Phase 5: Continuous Testing *(embedded in every step via TDD — NOT a separate phase)*
+
+Tests are written **before** implementation at each step (see TDD workflow above). This phase documents the full test suite structure for reference.
+
+#### Test File Organization
+```
+EasyCryptoTests/
+├── Core/
+│   ├── Models/
+│   │   ├── TradeModelTests.swift
+│   │   ├── SyncMetadataTests.swift
+│   │   ├── HoldingTests.swift
+│   │   └── PortfolioSummaryTests.swift
+│   ├── Networking/
+│   │   └── BinanceAPIClientTests.swift
+│   └── Services/
+│       ├── KeychainServiceTests.swift
+│       ├── FIFOCalculatorTests.swift
+│       ├── TradeImportServiceTests.swift
+│       └── PriceServiceTests.swift
+└── Features/
+    ├── Portfolio/
+    │   └── PortfolioProcessorTests.swift
+    ├── Holdings/
+    │   ├── HoldingsProcessorTests.swift
+    │   └── CoinDetailProcessorTests.swift
+    ├── TradeHistory/
+    │   └── TradeHistoryProcessorTests.swift
+    └── Settings/
+        └── SettingsProcessorTests.swift
+```
+
+#### Key Test Suites (BDD Style)
+
+**FIFOCalculatorTests** (≥ 90% coverage target)
+```swift
+@Suite("Given a FIFO calculator")
+struct FIFOCalculatorTests {
+    @Suite("When processing a single buy then sell")
+    struct SingleBuySell { ... }
+
+    @Suite("When processing DCA buys at different prices")
+    struct DCABuys { ... }
+
+    @Suite("When selling more than available quantity")
+    struct OversellEdgeCase { ... }
+
+    @Test("Then weighted average reflects quantity-weighted buy prices",
+          arguments: [...])  // parameterized
+    func weightedAverage(scenario: FIFOScenario) { ... }
+}
+```
+
+**PortfolioProcessorTests**
+```swift
+@Suite("Given a portfolio processor with mocked dependencies")
+struct PortfolioProcessorTests {
+    @Test("When refresh intent is sent, then it syncs trades and fetches prices")
+    func refreshSyncsAndFetches() async { ... }
+
+    @Test("When sort by P&L intent is sent, then holdings are reordered")
+    func sortByPnL() async { ... }
+
+    @Test("When API returns error, then state shows error message")
+    func apiErrorHandling() async { ... }
+}
+```
+
+**BinanceAPIClientTests**
+```swift
+@Suite("Given a Binance API client")
+struct BinanceAPIClientTests {
+    @Test("When signing a request, then HMAC-SHA256 matches expected signature")
+    func hmacSignature() { ... }
+
+    @Test("When API returns 429, then error is .rateLimited")
+    func rateLimitError() async { ... }
+}
+```
 
 ---
 

@@ -237,6 +237,39 @@ Apple's `os.Logger` with structured subsystem/category.
 - Sample data covers: multiple coins, buy + sell trades, DCA scenarios, varying P&L
 - Located in a `PreviewContent/` folder or `#Preview` blocks with inline seeding
 
+### 11.1 Preview Requirements for All SwiftUI Views
+Every SwiftUI view and reusable component **must** include `#Preview` blocks covering its most common use cases.
+
+#### Naming & Structure
+- Use named previews: `#Preview("Loaded — multiple holdings") { ... }`
+- Group related previews together in the same file as the view
+- Use `withDependencies` to inject mock data for processor-backed views
+
+#### Minimum Preview Coverage per View
+
+| State | When to include |
+|---|---|
+| **Happy path** | Always — populated data, normal interaction |
+| **Empty state** | Any view that can have zero items (lists, portfolio) |
+| **Error state** | Any view that displays errors inline |
+| **Loading state** | Any view with async data fetching |
+| **Variant states** | Components with visual variants (e.g. PnLLabel: positive / negative / zero) |
+
+#### Example
+```swift
+#Preview("Positive P&L") {
+    PnLLabel(value: 1234.56, percent: 12.5)
+}
+
+#Preview("Negative P&L") {
+    PnLLabel(value: -890.12, percent: -7.3)
+}
+
+#Preview("Neutral") {
+    PnLLabel(value: 0, percent: 0)
+}
+```
+
 ## 12. Refresh Behavior
 
 - **Pull-to-refresh only** (`.refreshable` modifier)
@@ -267,36 +300,123 @@ Apple's `os.Logger` with structured subsystem/category.
 
 ## 14. Testing Strategy
 
+### 14.0 Methodology — TDD with BDD Naming
+- **Test-Driven Development**: tests are written BEFORE implementation code at every step
+- **Red → Green → Refactor** cycle enforced per step
+- **≥ 80% line coverage gate** after each step; do not proceed until met
+- **Core business logic** (`FIFOCalculator`, `Holding`, `PortfolioSummary`) targets **≥ 90%**
+- Consult `.agents/skills/swift-testing-expert/SKILL.md` for all test writing
+
 ### 14.1 Framework
 - **Swift Testing** (already configured in the project)
 - `#expect` / `#require` macros, `@Test` attributes, `@Suite` for grouping
 - No XCTest for new tests
 
-### 14.2 Dependency Overrides in Tests
+### 14.2 BDD Naming Convention
+Use **Given/When/Then** structure with descriptive display names:
+
+```swift
+// "Given" = context → @Suite display name
+// "When/Then" = behavior → @Test display name
+
+@Suite("Given a FIFO calculator with DCA buy lots")
+struct FIFODCATests {
+    @Test("When a partial sell occurs, then it consumes earliest lots first")
+    func partialSellConsumesEarliestLots() { ... }
+
+    @Test("When all lots are sold, then realized P&L reflects total gain/loss")
+    func fullSellRealizedPnL() { ... }
+}
+
+@Suite("Given a portfolio processor with mocked dependencies")
+struct PortfolioProcessorTests {
+    @Test("When refresh intent is sent, then state contains updated holdings")
+    func refreshUpdatesHoldings() async {
+        await withDependencies {
+            $0[BinanceAPIClient.self].fetchMyTrades = { _, _ in mockTrades }
+            $0[BinanceAPIClient.self].fetchTickerPrices = { _ in mockPrices }
+        } operation: {
+            let processor = PortfolioProcessor()
+            await processor.send(.refresh)
+            #expect(processor.state.holdings.count == 3)
+        }
+    }
+
+    @Test("When API returns error, then state shows error message")
+    func apiErrorSetsErrorState() async { ... }
+}
+```
+
+### 14.3 Test Rules
+- Use `#expect` as default assertion; `#require` only for prerequisites
+- Prefer `struct` suites (value semantics, no shared state between tests)
+- Use parameterized `@Test(arguments:)` for data-driven scenarios
+- Use traits: `.enabled(if:)`, `.timeLimit(...)`, `.bug(...)`, tags for CI filtering
+- Use `withKnownIssue { }` for temporary known failures (preserves signal)
+- Use `withDependencies { }` for mocking all services in processor tests
+- Keep tests parallel-safe by default; `.serialized` only with documented rationale
+- Nest `@Suite` structs for feature grouping and readability
+
+### 14.4 Dependency Overrides in Tests
 Using swift-dependencies `withDependencies`:
 
 ```swift
-@Test func portfolioRefreshComputesHoldings() async {
+@Test("When saving valid credentials, then keychain stores them")
+func saveCredentials() async throws {
+    var savedKey: String?
     await withDependencies {
-        $0[BinanceAPIClient.self].fetchMyTrades = { _, _ in mockTrades }
-        $0[BinanceAPIClient.self].fetchTickerPrices = { _ in mockPrices }
+        $0[KeychainService.self].save = { key, secret in savedKey = key }
     } operation: {
-        let processor = PortfolioProcessor()
-        await processor.send(.refresh)
-        #expect(processor.state.holdings.count == 3)
+        let processor = SettingsProcessor()
+        await processor.send(.saveApiKey(key: "abc", secret: "xyz"))
+        #expect(savedKey == "abc")
     }
 }
 ```
 
-### 14.3 Test Categories
+### 14.5 Test Suites per Step
 
-| Suite | Focus |
-|---|---|
-| `FIFOCalculatorTests` | FIFO lot matching: simple sell, partial sell, DCA, full close, edge cases |
-| `BinanceAPIClientTests` | HMAC signature generation, URL construction, error decoding |
-| `HoldingCalculationTests` | Weighted average cost, P&L accuracy |
-| `ProcessorTests` | Intent handling with mocked dependencies |
-| `SwiftDataTests` | Model persistence, unique constraints, fetch descriptors |
+| Step | Test Suite | Coverage Target |
+|---|---|---|
+| 1.1 Models | `TradeModelTests`, `SyncMetadataTests`, `HoldingTests`, `PortfolioSummaryTests` | ≥ 80% |
+| 1.2 Keychain | `KeychainServiceTests` | ≥ 80% |
+| 1.3 API Client | `BinanceAPIClientTests` (HMAC, URLs, errors) | ≥ 80% |
+| 1.4 FIFO | `FIFOCalculatorTests` (all scenarios) | ≥ 90% |
+| 1.5 Import | `TradeImportServiceTests` (pagination, mapping, sync) | ≥ 80% |
+| 1.6 Price | `PriceServiceTests` (batch fetch, mapping) | ≥ 80% |
+| 2.1 MVI Base | `ProcessorBaseTests` | ≥ 80% |
+| 2.2 Portfolio | `PortfolioProcessorTests` | ≥ 80% |
+| 2.3 Holdings | `HoldingsProcessorTests`, `CoinDetailProcessorTests` | ≥ 80% |
+| 2.4 History | `TradeHistoryProcessorTests` | ≥ 80% |
+| 2.5 Settings | `SettingsProcessorTests` | ≥ 80% |
+
+### 14.6 Test File Structure
+```
+EasyCryptoTests/
+├── Core/
+│   ├── Models/
+│   │   ├── TradeModelTests.swift
+│   │   ├── SyncMetadataTests.swift
+│   │   ├── HoldingTests.swift
+│   │   └── PortfolioSummaryTests.swift
+│   ├── Networking/
+│   │   └── BinanceAPIClientTests.swift
+│   └── Services/
+│       ├── KeychainServiceTests.swift
+│       ├── FIFOCalculatorTests.swift
+│       ├── TradeImportServiceTests.swift
+│       └── PriceServiceTests.swift
+└── Features/
+    ├── Portfolio/
+    │   └── PortfolioProcessorTests.swift
+    ├── Holdings/
+    │   ├── HoldingsProcessorTests.swift
+    │   └── CoinDetailProcessorTests.swift
+    ├── TradeHistory/
+    │   └── TradeHistoryProcessorTests.swift
+    └── Settings/
+        └── SettingsProcessorTests.swift
+```
 
 ## 15. Security Considerations
 
