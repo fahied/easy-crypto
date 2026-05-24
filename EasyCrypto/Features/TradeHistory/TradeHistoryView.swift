@@ -7,7 +7,7 @@ import SwiftUI
 import SwiftData
 
 struct TradeHistoryView: View {
-    var processor: TradeHistoryProcessor
+    @State var processor: TradeHistoryProcessor
 
     private var state: TradeHistoryState { processor.state }
 

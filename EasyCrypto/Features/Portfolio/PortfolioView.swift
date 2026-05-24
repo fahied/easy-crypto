@@ -7,7 +7,7 @@ import SwiftUI
 import SwiftData
 
 struct PortfolioView: View {
-    var processor: PortfolioProcessor
+    @State var processor: PortfolioProcessor
 
     private var state: PortfolioState { processor.state }
 

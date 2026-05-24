@@ -7,7 +7,7 @@ import SwiftUI
 import SwiftData
 
 struct SettingsView: View {
-    var processor: SettingsProcessor
+    @State var processor: SettingsProcessor
 
     @State private var apiKeyInput = ""
     @State private var secretInput = ""

@@ -8,7 +8,7 @@ import SwiftData
 import Charts
 
 struct CoinDetailView: View {
-    var processor: CoinDetailProcessor
+    @State var processor: CoinDetailProcessor
     let asset: String
 
     private var state: CoinDetailState { processor.state }

@@ -7,7 +7,7 @@ import SwiftUI
 import SwiftData
 
 struct HoldingsListView: View {
-    var processor: HoldingsProcessor
+    @State var processor: HoldingsProcessor
     var onSelectHolding: (Holding) -> Void
 
     private var state: HoldingsState { processor.state }
