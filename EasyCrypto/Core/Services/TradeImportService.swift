@@ -54,6 +54,13 @@ extension TradeImportService {
         category: "sync"
     )
 
+    nonisolated private static let bootstrapTrackedAssets = [
+        "BTC",
+        "SOL",
+        "IOTX",
+        "BNB",
+    ]
+
     static func live(apiClient: BinanceAPIClient) -> TradeImportService {
         TradeImportService(
             sync: { existingSync in
@@ -65,7 +72,9 @@ extension TradeImportService {
                 let previouslySyncedAssets = existingSync.keys
                     .filter { $0.hasSuffix("USDT") }
                     .map { String($0.dropLast(4)) }
-                let assets = Array(Set(balanceAssets + previouslySyncedAssets)).sorted()
+                let assets = Array(
+                    Set(balanceAssets + previouslySyncedAssets + bootstrapTrackedAssets)
+                ).sorted()
 
                 guard !assets.isEmpty else {
                     logger.info("No non-USDT assets found in account")

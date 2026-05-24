@@ -237,6 +237,18 @@ nonisolated struct BinanceAPIClient: Sendable {
     var fetchMyTrades: @Sendable (_ symbol: String, _ fromId: Int64?) async throws -> [BinanceTrade]
     var fetchTickerPrices: @Sendable (_ symbols: [String]) async throws -> [BinanceTickerPrice]
     var fetchKlines: @Sendable (_ symbol: String, _ interval: String, _ limit: Int) async throws -> [Kline]
+
+    init(
+        fetchAccount: @escaping @Sendable () async throws -> [BinanceBalance],
+        fetchMyTrades: @escaping @Sendable (_ symbol: String, _ fromId: Int64?) async throws -> [BinanceTrade],
+        fetchTickerPrices: @escaping @Sendable (_ symbols: [String]) async throws -> [BinanceTickerPrice],
+        fetchKlines: @escaping @Sendable (_ symbol: String, _ interval: String, _ limit: Int) async throws -> [Kline]
+    ) {
+        self.fetchAccount = fetchAccount
+        self.fetchMyTrades = fetchMyTrades
+        self.fetchTickerPrices = fetchTickerPrices
+        self.fetchKlines = fetchKlines
+    }
 }
 
 // MARK: - Live Implementation

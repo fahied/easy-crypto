@@ -53,8 +53,6 @@ struct AssetDiscoveryTests {
 
     @Test("When account has BTC and ETH, then fetches trades for both symbols")
     func discoversMultipleAssets() async throws {
-        var fetchedSymbols: [String] = []
-        // Use a lock-free approach: track symbols via the returned trades
         let client = BinanceAPIClient(
             fetchAccount: { [makeBalance("BTC"), makeBalance("ETH")] },
             fetchMyTrades: { symbol, _ in
@@ -88,15 +86,43 @@ struct AssetDiscoveryTests {
         #expect(!symbols.contains("USDTUSDT"))
     }
 
-    @Test("When account is empty, then result has no trades")
-    func emptyAccount() async throws {
-        let client = makeClient(balances: [])
+    @Test("When account is empty, then bootstrap symbols are still requested")
+    func bootstrapSymbolsAreFetchedOnFreshSync() async throws {
+        let client = makeClient(
+            balances: [],
+            tradesForSymbol: { symbol, _ in
+                [makeBinanceTrade(id: 1, symbol: symbol)]
+            }
+        )
         let service = TradeImportService.live(apiClient: client)
         let result = try await service.sync([:])
 
-        #expect(result.mappedTrades.isEmpty)
-        #expect(result.syncUpdates.isEmpty)
+        let symbols = Set(result.mappedTrades.map(\.symbol))
+        #expect(symbols.contains("BTCUSDT"))
+        #expect(symbols.contains("SOLUSDT"))
+        #expect(symbols.contains("IOTXUSDT"))
+        #expect(symbols.contains("BNBUSDT"))
     }
+
+    @Test("When account has ETH, then bootstrap symbols are added to the sync set")
+    func addsBootstrapSymbolsToBalanceAssets() async throws {
+        let client = makeClient(
+            balances: [makeBalance("ETH")],
+            tradesForSymbol: { symbol, _ in
+                [makeBinanceTrade(id: 1, symbol: symbol)]
+            }
+        )
+        let service = TradeImportService.live(apiClient: client)
+        let result = try await service.sync([:])
+
+        let symbols = Set(result.mappedTrades.map(\.symbol))
+        #expect(symbols.contains("ETHUSDT"))
+        #expect(symbols.contains("BTCUSDT"))
+        #expect(symbols.contains("SOLUSDT"))
+        #expect(symbols.contains("IOTXUSDT"))
+        #expect(symbols.contains("BNBUSDT"))
+    }
+
 }
 
 // MARK: - Trade Mapping Tests
