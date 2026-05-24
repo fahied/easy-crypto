@@ -1,6 +1,23 @@
 # Plan: EasyCrypto — Binance Portfolio Tracker (iOS 26)
 
-Build a 4-tab iOS 26 app that imports spot trade history from Binance API, displays portfolio overview with clear USDT-denominated P&L, per-coin holdings with weighted average cost, FIFO-based realized P&L on sells, trade history, and coin detail with chart. Uses MVI architecture, SwiftData persistence, iOS 26 liquid glass design, and Keychain for API key storage. Manual refresh only — pull-to-refresh syncs trades + prices in one action. Zero third-party dependencies.
+Build a 4-tab iOS 26 app that imports spot trade history from Binance API, displays portfolio overview with clear USDT-denominated P&L, per-coin holdings with weighted average cost, FIFO-based realized P&L on sells, trade history, and coin detail with chart. Uses MVI architecture, SwiftData persistence, iOS 26 liquid glass design, and Keychain for API key storage. Manual refresh only — pull-to-refresh syncs trades + prices in one action.
+
+---
+
+### Required Skills — Read Before Implementing
+
+Before starting any phase, **read and follow** the relevant `.agents/skills` in this repo. These contain project-specific best practices and rules that must be applied.
+
+| Skill | Path | When to use |
+|---|---|---|
+| **swiftdata-pro** | `.agents/skills/swiftdata-pro/SKILL.md` | Steps 1.1, 1.5, 3.2, and any SwiftData model/query work. Follow its core rules, predicate safety, and indexing guidelines. |
+| **swift-concurrency** | `.agents/skills/swift-concurrency/SKILL.md` | All networking, services, and processor code. Follow its actor isolation patterns, `nonisolated` guidance, and `Sendable` rules. |
+| **swift-testing-expert** | `.agents/skills/swift-testing-expert/SKILL.md` | Phase 5 and all test writing. Follow its `#expect`/`#require` macros, `@Test`/`@Suite` structure, parameterized test patterns. |
+| **figma-to-mvi** | `.agents/skills/figma-to-mvi/SKILL.md` | Steps 2.1–2.5 (MVI feature layer). Follow its intent modeling, state modeling, and processor side-effect patterns. |
+
+Also consult:
+- `Project-Brief.md` — scope, acceptance criteria, ADRs
+- `Docs/TECHNICAL-DIRECTION.md` — detailed technical decisions (DI with swift-dependencies, error handling, logging, formatting, concurrency model)
 
 ---
 
