@@ -5,7 +5,7 @@
 
 import Foundation
 
-nonisolated struct Holding: Equatable, Sendable, Identifiable {
+nonisolated struct Holding: Equatable, Sendable, Identifiable, Hashable {
     var id: String { asset }
 
     let asset: String

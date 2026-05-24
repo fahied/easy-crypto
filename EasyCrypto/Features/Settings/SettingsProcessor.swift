@@ -57,6 +57,7 @@ class SettingsProcessor: Processor {
         do {
             try keychainService.save(apiKey, secret)
             state.hasApiKey = true
+            NotificationCenter.default.post(name: .apiKeyChanged, object: nil)
         } catch {
             state.error = error.localizedDescription
         }
@@ -71,6 +72,7 @@ class SettingsProcessor: Processor {
             try keychainService.delete()
             state.hasApiKey = false
             state.connectionStatus = .idle
+            NotificationCenter.default.post(name: .apiKeyChanged, object: nil)
         } catch {
             state.error = error.localizedDescription
         }
