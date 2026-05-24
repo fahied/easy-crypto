@@ -27,6 +27,7 @@
 		5B22598D2FC2B9F000C8D872 /* EasyCrypto.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EasyCrypto.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5B22599A2FC2B9F000C8D872 /* EasyCryptoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EasyCryptoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5B2259A42FC2B9F000C8D872 /* EasyCryptoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EasyCryptoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		5B2259DD2FC2C87D00C8D872 /* EasyCrypto.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = EasyCrypto.xctestplan; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -75,6 +76,7 @@
 		5B2259842FC2B9F000C8D872 = {
 			isa = PBXGroup;
 			children = (
+				5B2259DD2FC2C87D00C8D872 /* EasyCrypto.xctestplan */,
 				5B22598F2FC2B9F000C8D872 /* EasyCrypto */,
 				5B22599D2FC2B9F000C8D872 /* EasyCryptoTests */,
 				5B2259A72FC2B9F000C8D872 /* EasyCryptoUITests */,

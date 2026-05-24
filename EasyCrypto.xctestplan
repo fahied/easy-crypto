@@ -1,0 +1,38 @@
+{
+  "configurations" : [
+    {
+      "id" : "A4D7722C-A7C3-4B2D-B88E-F0C9D62B6E34",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "performanceAntipatternCheckerEnabled" : true,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:EasyCrypto.xcodeproj",
+      "identifier" : "5B22598C2FC2B9F000C8D872",
+      "name" : "EasyCrypto"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:EasyCrypto.xcodeproj",
+        "identifier" : "5B2259992FC2B9F000C8D872",
+        "name" : "EasyCryptoTests"
+      }
+    },
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:EasyCrypto.xcodeproj",
+        "identifier" : "5B2259A32FC2B9F000C8D872",
+        "name" : "EasyCryptoUITests"
+      }
+    }
+  ],
+  "version" : 1
+}
