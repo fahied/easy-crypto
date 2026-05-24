@@ -13,6 +13,14 @@ nonisolated struct PortfolioSummary: Equatable, Sendable {
     let totalRealizedPnL: Double
     let holdingsCount: Int
 
+    var totalPnL: Double {
+        totalRealizedPnL + totalUnrealizedPnL
+    }
+
+    var totalPnLPercent: Double {
+        totalInvestedUSDT > 0 ? (totalPnL / totalInvestedUSDT) * 100.0 : 0.0
+    }
+
     static let empty = PortfolioSummary(
         totalInvestedUSDT: 0,
         totalCurrentValueUSDT: 0,
@@ -39,10 +47,14 @@ nonisolated struct PortfolioSummary: Equatable, Sendable {
     }
 
     init(from holdings: [Holding]) {
+        self.init(from: holdings, totalRealizedPnL: nil)
+    }
+
+    init(from holdings: [Holding], totalRealizedPnL: Double?) {
         let invested = holdings.reduce(0.0) { $0 + $1.totalInvestedUSDT }
         let currentValue = holdings.reduce(0.0) { $0 + $1.currentValueUSDT }
         let unrealizedPnL = holdings.reduce(0.0) { $0 + $1.unrealizedPnL }
-        let realizedPnL = holdings.reduce(0.0) { $0 + $1.realizedPnL }
+        let realizedPnL = totalRealizedPnL ?? holdings.reduce(0.0) { $0 + $1.realizedPnL }
         let percent = invested > 0 ? (unrealizedPnL / invested) * 100.0 : 0.0
 
         self.totalInvestedUSDT = invested

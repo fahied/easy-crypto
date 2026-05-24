@@ -54,6 +54,8 @@ extension FIFOCalculator {
         calculate: { trades in
             guard !trades.isEmpty else { return .empty }
 
+            let epsilon = 1e-12
+
             var lots: [BuyLot] = []
             var realizedPnL: Double = 0
 
@@ -64,18 +66,32 @@ extension FIFOCalculator {
                     if trade.commissionAsset == trade.asset {
                         qty -= trade.commission
                     }
-                    lots.append(BuyLot(price: trade.price, remainingQuantity: qty))
+                    if qty > epsilon {
+                        lots.append(BuyLot(price: trade.price, remainingQuantity: qty))
+                    }
                 } else {
                     // Sell — consume lots in FIFO order
                     var sellQty = trade.quantity
+                    let feeInBaseAsset = trade.commissionAsset == trade.asset ? trade.commission : 0
+                    var remainingSaleQuantity = trade.quantity
+
+                    // When commission is charged in the sold asset, Binance removes both
+                    // the executed quantity and the fee from inventory.
+                    sellQty += feeInBaseAsset
 
                     while sellQty > 0 && !lots.isEmpty {
                         let consumed = min(lots[0].remainingQuantity, sellQty)
-                        realizedPnL += consumed * (trade.price - lots[0].price)
+                        let soldPortion = min(consumed, remainingSaleQuantity)
+                        let feePortion = consumed - soldPortion
+
+                        realizedPnL += soldPortion * (trade.price - lots[0].price)
+                        realizedPnL -= feePortion * lots[0].price
+
                         lots[0].remainingQuantity -= consumed
                         sellQty -= consumed
+                        remainingSaleQuantity -= soldPortion
 
-                        if lots[0].remainingQuantity <= 0 {
+                        if lots[0].remainingQuantity <= epsilon {
                             lots.removeFirst()
                         }
                     }
@@ -86,6 +102,8 @@ extension FIFOCalculator {
                     }
                 }
             }
+
+            lots.removeAll { $0.remainingQuantity <= epsilon }
 
             let totalRemainingQty = lots.reduce(0.0) { $0 + $1.remainingQuantity }
             let totalInvested = lots.reduce(0.0) { $0 + $1.price * $1.remainingQuantity }

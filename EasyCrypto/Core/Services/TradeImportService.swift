@@ -59,9 +59,13 @@ extension TradeImportService {
             sync: { existingSync in
                 // 1. Discover assets from account
                 let balances = try await apiClient.fetchAccount()
-                let assets = balances
+                let balanceAssets = balances
                     .map(\.asset)
                     .filter { $0 != "USDT" }
+                let previouslySyncedAssets = existingSync.keys
+                    .filter { $0.hasSuffix("USDT") }
+                    .map { String($0.dropLast(4)) }
+                let assets = Array(Set(balanceAssets + previouslySyncedAssets)).sorted()
 
                 guard !assets.isEmpty else {
                     logger.info("No non-USDT assets found in account")

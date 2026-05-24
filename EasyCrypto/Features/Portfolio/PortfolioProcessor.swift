@@ -101,9 +101,12 @@ class PortfolioProcessor: Processor {
             try modelContext.save()
 
             // 5. Compute holdings from all persisted trades
-            let holdings = try await computeHoldings()
-            state.holdings = Self.sortHoldings(holdings, by: state.sortCriteria)
-            state.summary = PortfolioSummary(from: state.holdings)
+            let portfolioData = try await computePortfolioData()
+            state.holdings = Self.sortHoldings(portfolioData.holdings, by: state.sortCriteria)
+            state.summary = PortfolioSummary(
+                from: state.holdings,
+                totalRealizedPnL: portfolioData.totalRealizedPnL
+            )
             state.lastRefreshDate = Date()
 
             let count = state.holdings.count
@@ -119,7 +122,12 @@ class PortfolioProcessor: Processor {
 
     // MARK: - Holdings Computation
 
-    private func computeHoldings() async throws -> [Holding] {
+    private struct PortfolioData {
+        let holdings: [Holding]
+        let totalRealizedPnL: Double
+    }
+
+    private func computePortfolioData() async throws -> PortfolioData {
         let tradesDescriptor = FetchDescriptor<Trade>(
             sortBy: [SortDescriptor(\.timestamp)]
         )
@@ -131,6 +139,7 @@ class PortfolioProcessor: Processor {
         let prices = try await priceService.fetchPrices(symbols)
 
         var holdings: [Holding] = []
+        var totalRealizedPnL: Double = 0
 
         for (asset, trades) in tradesByAsset {
             let fifoTrades = trades.map { trade in
@@ -145,6 +154,7 @@ class PortfolioProcessor: Processor {
             }
 
             let fifoResult = fifoCalculator.calculate(fifoTrades)
+            totalRealizedPnL += fifoResult.realizedPnL
 
             guard fifoResult.totalRemainingQuantity > 0 else { continue }
 
@@ -168,7 +178,7 @@ class PortfolioProcessor: Processor {
             ))
         }
 
-        return holdings
+        return PortfolioData(holdings: holdings, totalRealizedPnL: totalRealizedPnL)
     }
 
     // MARK: - Sorting

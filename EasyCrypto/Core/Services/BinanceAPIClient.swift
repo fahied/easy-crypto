@@ -276,6 +276,11 @@ extension BinanceAPIClient {
                     data: data,
                     response: response
                 )
+                BinanceDebugLogger.logJSONResponse(
+                    validData,
+                    endpoint: "/api/v3/account",
+                    logger: logger
+                )
                 do {
                     let accountResponse = try JSONDecoder().decode(
                         BinanceAccountResponse.self,
@@ -315,6 +320,11 @@ extension BinanceAPIClient {
                 let validData = try BinanceResponseMapper.mapResponse(
                     data: data,
                     response: response
+                )
+                BinanceDebugLogger.logJSONResponse(
+                    validData,
+                    endpoint: "/api/v3/myTrades?symbol=\(symbol)",
+                    logger: logger
                 )
                 do {
                     let trades = try JSONDecoder().decode(
@@ -437,4 +447,29 @@ extension BinanceAPIClient {
         fetchTickerPrices: { _ in [] },
         fetchKlines: { _, _, _ in [] }
     )
+}
+
+// MARK: - Debug Logging
+
+nonisolated enum BinanceDebugLogger {
+    static func logJSONResponse(_ data: Data, endpoint: String, logger: Logger) {
+        guard let prettyJSON = prettyPrintedJSONString(from: data) else {
+            logger.debug("Binance \(endpoint) response: \(String(decoding: data, as: UTF8.self), privacy: .public)")
+            return
+        }
+
+        logger.debug("Binance \(endpoint) response:\n\(prettyJSON, privacy: .public)")
+    }
+
+    private static func prettyPrintedJSONString(from data: Data) -> String? {
+        guard
+            let object = try? JSONSerialization.jsonObject(with: data),
+            let prettyData = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted]),
+            let prettyString = String(data: prettyData, encoding: .utf8)
+        else {
+            return nil
+        }
+
+        return prettyString
+    }
 }

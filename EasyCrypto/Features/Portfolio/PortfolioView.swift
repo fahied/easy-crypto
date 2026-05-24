@@ -53,6 +53,7 @@ struct PortfolioView: View {
         let summary = state.summary
         let pnlColor = summary.totalUnrealizedPnL >= 0 ? Theme.profit : Theme.loss
         let realizedColor = summary.totalRealizedPnL >= 0 ? Theme.profit : Theme.loss
+        let totalPnLColor = summary.totalPnL >= 0 ? Theme.profit : Theme.loss
 
         return LazyVGrid(
             columns: [GridItem(.flexible(), spacing: Theme.cardSpacing),
@@ -68,6 +69,13 @@ struct PortfolioView: View {
             MetricCard(
                 label: "Current Value",
                 value: summary.totalCurrentValueUSDT.usdtFormatted
+            )
+
+            MetricCard(
+                label: "Total P&L",
+                value: summary.totalPnL.signedUsdtFormatted,
+                subtitle: summary.totalPnLPercent.percentFormatted,
+                valueColor: totalPnLColor
             )
 
             MetricCard(

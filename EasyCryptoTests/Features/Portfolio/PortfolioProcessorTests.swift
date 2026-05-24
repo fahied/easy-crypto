@@ -244,6 +244,53 @@ struct PortfolioRefreshTests {
 
         #expect(processor.state.holdings.isEmpty)
     }
+
+    @Test("When a position is fully closed, then summary keeps realized P&L from transaction history")
+    func closedPositionsContributeToSummaryRealizedPnL() async throws {
+        let importService = TradeImportService(
+            sync: { _ in
+                TradeImportResult(
+                    mappedTrades: [
+                        makeMappedTrade(
+                            id: 1, symbol: "BTCUSDT", asset: "BTC",
+                            price: 50000, quantity: 1.0,
+                            commission: 0, commissionAsset: "USDT", isBuyer: true
+                        ),
+                        makeMappedTrade(
+                            id: 2, symbol: "BTCUSDT", asset: "BTC",
+                            price: 60000, quantity: 1.0,
+                            commission: 0, commissionAsset: "USDT", isBuyer: false
+                        ),
+                        makeMappedTrade(
+                            id: 3, symbol: "ETHUSDT", asset: "ETH",
+                            price: 3000, quantity: 2.0,
+                            quoteQuantity: 6000,
+                            commission: 0, commissionAsset: "USDT", isBuyer: true
+                        ),
+                    ],
+                    syncUpdates: [
+                        SyncUpdate(symbol: "BTCUSDT", lastTradeId: 2, syncDate: Date()),
+                        SyncUpdate(symbol: "ETHUSDT", lastTradeId: 3, syncDate: Date()),
+                    ]
+                )
+            }
+        )
+
+        let priceService = PriceService(fetchPrices: { _ in ["BTCUSDT": 65000.0, "ETHUSDT": 3500.0] })
+
+        let processor = try makeProcessor(
+            importService: importService,
+            priceService: priceService
+        )
+
+        await processor.handle(.refresh)
+
+        #expect(processor.state.holdings.count == 1)
+        #expect(processor.state.summary.holdingsCount == 1)
+        #expect(processor.state.summary.totalRealizedPnL == 10000.0)
+        #expect(processor.state.summary.totalUnrealizedPnL == 1000.0)
+        #expect(processor.state.summary.totalPnL == 11000.0)
+    }
 }
 
 // MARK: - Incremental Sync
