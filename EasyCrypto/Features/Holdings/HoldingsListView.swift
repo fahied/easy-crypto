@@ -25,6 +25,7 @@ struct HoldingsListView: View {
             }
         }
         .task {
+            guard state.holdings.isEmpty else { return }
             await processor.handle(.loadHoldings)
         }
     }

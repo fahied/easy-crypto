@@ -25,6 +25,7 @@ struct CoinDetailView: View {
         }
         .navigationTitle(asset)
         .task {
+            guard state.holding == nil else { return }
             await processor.handle(.loadDetail(asset: asset))
         }
     }
