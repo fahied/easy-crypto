@@ -53,8 +53,6 @@ struct AssetDiscoveryTests {
 
     @Test("When account has BTC and ETH, then fetches trades for both symbols")
     func discoversMultipleAssets() async throws {
-        var fetchedSymbols: [String] = []
-        // Use a lock-free approach: track symbols via the returned trades
         let client = BinanceAPIClient(
             fetchAccount: { [makeBalance("BTC"), makeBalance("ETH")] },
             fetchMyTrades: { symbol, _ in
@@ -88,15 +86,43 @@ struct AssetDiscoveryTests {
         #expect(!symbols.contains("USDTUSDT"))
     }
 
-    @Test("When account is empty, then result has no trades")
-    func emptyAccount() async throws {
-        let client = makeClient(balances: [])
+    @Test("When account is empty, then bootstrap symbols are still requested")
+    func bootstrapSymbolsAreFetchedOnFreshSync() async throws {
+        let client = makeClient(
+            balances: [],
+            tradesForSymbol: { symbol, _ in
+                [makeBinanceTrade(id: 1, symbol: symbol)]
+            }
+        )
         let service = TradeImportService.live(apiClient: client)
         let result = try await service.sync([:])
 
-        #expect(result.mappedTrades.isEmpty)
-        #expect(result.syncUpdates.isEmpty)
+        let symbols = Set(result.mappedTrades.map(\.symbol))
+        #expect(symbols.contains("BTCUSDT"))
+        #expect(symbols.contains("SOLUSDT"))
+        #expect(symbols.contains("IOTXUSDT"))
+        #expect(symbols.contains("BNBUSDT"))
     }
+
+    @Test("When account has ETH, then bootstrap symbols are added to the sync set")
+    func addsBootstrapSymbolsToBalanceAssets() async throws {
+        let client = makeClient(
+            balances: [makeBalance("ETH")],
+            tradesForSymbol: { symbol, _ in
+                [makeBinanceTrade(id: 1, symbol: symbol)]
+            }
+        )
+        let service = TradeImportService.live(apiClient: client)
+        let result = try await service.sync([:])
+
+        let symbols = Set(result.mappedTrades.map(\.symbol))
+        #expect(symbols.contains("ETHUSDT"))
+        #expect(symbols.contains("BTCUSDT"))
+        #expect(symbols.contains("SOLUSDT"))
+        #expect(symbols.contains("IOTXUSDT"))
+        #expect(symbols.contains("BNBUSDT"))
+    }
+
 }
 
 // MARK: - Trade Mapping Tests
@@ -114,7 +140,7 @@ struct TradeMappingTests {
         )
         let client = makeClient(
             balances: [makeBalance("BTC")],
-            tradesForSymbol: { _, _ in [apiTrade] }
+            tradesForSymbol: { symbol, _ in symbol == "BTCUSDT" ? [apiTrade] : [] }
         )
         let service = TradeImportService.live(apiClient: client)
         let result = try await service.sync([:])
@@ -137,8 +163,10 @@ struct TradeMappingTests {
     func mapsSellTrade() async throws {
         let client = makeClient(
             balances: [makeBalance("ETH")],
-            tradesForSymbol: { _, _ in
-                [makeBinanceTrade(id: 1, symbol: "ETHUSDT", isBuyer: false)]
+            tradesForSymbol: { symbol, _ in
+                symbol == "ETHUSDT"
+                    ? [makeBinanceTrade(id: 1, symbol: "ETHUSDT", isBuyer: false)]
+                    : []
             }
         )
         let service = TradeImportService.live(apiClient: client)
@@ -160,7 +188,7 @@ struct PaginationTests {
         let trades = (0..<5).map { makeBinanceTrade(id: Int64($0)) }
         let client = makeClient(
             balances: [makeBalance("BTC")],
-            tradesForSymbol: { _, _ in trades }
+            tradesForSymbol: { symbol, _ in symbol == "BTCUSDT" ? trades : [] }
         )
         let service = TradeImportService.live(apiClient: client)
         let result = try await service.sync([:])
@@ -172,7 +200,8 @@ struct PaginationTests {
     func paginatesOnFullPage() async throws {
         let client = makeClient(
             balances: [makeBalance("BTC")],
-            tradesForSymbol: { _, fromId in
+            tradesForSymbol: { symbol, fromId in
+                guard symbol == "BTCUSDT" else { return [] }
                 if fromId == nil {
                     // First page: 1000 trades with IDs 0...999
                     return (0..<1000).map {
@@ -196,7 +225,8 @@ struct PaginationTests {
     func multiplePages() async throws {
         let client = makeClient(
             balances: [makeBalance("BTC")],
-            tradesForSymbol: { _, fromId in
+            tradesForSymbol: { symbol, fromId in
+                guard symbol == "BTCUSDT" else { return [] }
                 if fromId == nil {
                     return (0..<1000).map { makeBinanceTrade(id: Int64($0)) }
                 } else if fromId == 1000 {
@@ -237,11 +267,34 @@ struct PaginationTests {
 @Suite("Given a trade import service with existing sync metadata")
 struct IncrementalSyncTests {
 
+    @Test("When a symbol exists only in sync metadata, then it still fetches new trades")
+    func syncsPreviouslyTrackedSymbolWithZeroBalance() async throws {
+        let client = makeClient(
+            balances: [makeBalance("ETH")],
+            tradesForSymbol: { symbol, fromId in
+                if symbol == "BTCUSDT" {
+                    #expect(fromId == 501)
+                    return [makeBinanceTrade(id: 501, symbol: symbol, isBuyer: false)]
+                }
+
+                // ETH balance and bootstrap symbols return no new trades
+                return []
+            }
+        )
+        let service = TradeImportService.live(apiClient: client)
+
+        let result = try await service.sync(["BTCUSDT": 500])
+
+        #expect(result.mappedTrades.count == 1)
+        #expect(result.mappedTrades.first?.symbol == "BTCUSDT")
+    }
+
     @Test("When existingSync has lastTradeId, then fromId starts at lastTradeId + 1")
     func usesExistingSyncMetadata() async throws {
         let client = makeClient(
             balances: [makeBalance("BTC")],
-            tradesForSymbol: { _, fromId in
+            tradesForSymbol: { symbol, fromId in
+                guard symbol == "BTCUSDT" else { return [] }
                 #expect(fromId == 501)
                 return [makeBinanceTrade(id: 501), makeBinanceTrade(id: 502)]
             }
@@ -272,10 +325,12 @@ struct IncrementalSyncTests {
             tradesForSymbol: { symbol, fromId in
                 if symbol == "BTCUSDT" {
                     #expect(fromId == 101)
+                    return [makeBinanceTrade(id: (fromId ?? 0) + 1, symbol: symbol)]
                 } else if symbol == "ETHUSDT" {
                     #expect(fromId == 201)
+                    return [makeBinanceTrade(id: (fromId ?? 0) + 1, symbol: symbol)]
                 }
-                return [makeBinanceTrade(id: (fromId ?? 0) + 1, symbol: symbol)]
+                return []
             }
         )
         let service = TradeImportService.live(apiClient: client)
@@ -294,8 +349,10 @@ struct SyncUpdateTests {
     func syncUpdateHasLastTradeId() async throws {
         let client = makeClient(
             balances: [makeBalance("BTC")],
-            tradesForSymbol: { _, _ in
-                [makeBinanceTrade(id: 50), makeBinanceTrade(id: 100), makeBinanceTrade(id: 75)]
+            tradesForSymbol: { symbol, _ in
+                symbol == "BTCUSDT"
+                    ? [makeBinanceTrade(id: 50), makeBinanceTrade(id: 100), makeBinanceTrade(id: 75)]
+                    : []
             }
         )
         let service = TradeImportService.live(apiClient: client)
@@ -326,9 +383,10 @@ struct SyncUpdateTests {
             tradesForSymbol: { symbol, _ in
                 if symbol == "BTCUSDT" {
                     return [makeBinanceTrade(id: 10, symbol: symbol)]
-                } else {
+                } else if symbol == "ETHUSDT" {
                     return [makeBinanceTrade(id: 20, symbol: symbol)]
                 }
+                return []
             }
         )
         let service = TradeImportService.live(apiClient: client)
@@ -376,7 +434,10 @@ struct ImportErrorTests {
                 if symbol == "BTCUSDT" {
                     throw BinanceError.apiError(code: -1121, message: "Invalid symbol")
                 }
-                return [makeBinanceTrade(id: 1, symbol: symbol)]
+                if symbol == "ETHUSDT" {
+                    return [makeBinanceTrade(id: 1, symbol: symbol)]
+                }
+                return []
             },
             fetchTickerPrices: { _ in [] },
             fetchKlines: { _, _, _ in [] }

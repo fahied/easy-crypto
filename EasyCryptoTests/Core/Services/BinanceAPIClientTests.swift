@@ -500,6 +500,12 @@ struct LiveClientTests {
     func fetchAccountSuccess() async throws {
         let json = #"{"balances":[{"asset":"BTC","free":"1.0","locked":"0"}]}"#
         MockURLProtocol.requestHandler = { request in
+            if request.url?.path == "/api/v3/time" {
+                let response = HTTPURLResponse(
+                    url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+                )!
+                return (response, Data(#"{"serverTime":1700000000000}"#.utf8))
+            }
             #expect(request.value(forHTTPHeaderField: "X-MBX-APIKEY") == "testKey")
             #expect(request.url?.path == "/api/v3/account")
             let response = HTTPURLResponse(
@@ -555,6 +561,12 @@ struct LiveClientTests {
         "time":1700000000000,"isBuyer":true,"orderId":100}]
         """
         MockURLProtocol.requestHandler = { request in
+            if request.url?.path == "/api/v3/time" {
+                let response = HTTPURLResponse(
+                    url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+                )!
+                return (response, Data(#"{"serverTime":1700000000000}"#.utf8))
+            }
             let query = request.url?.query ?? ""
             #expect(query.contains("symbol=BTCUSDT"))
             #expect(query.contains("limit=1000"))

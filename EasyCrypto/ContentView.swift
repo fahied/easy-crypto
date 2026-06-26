@@ -66,7 +66,8 @@ struct ContentView: View {
                 NavigationStack {
                     TradeHistoryView(
                         processor: TradeHistoryProcessor(
-                            modelContainer: modelContainer
+                            modelContainer: modelContainer,
+                            fifoCalculator: fifoCalculator
                         )
                     )
                     .navigationTitle("History")

@@ -263,6 +263,22 @@ struct FIFOSellCommissionTests {
 
         #expect(result.realizedPnL == 10000)  // no commission deduction
     }
+
+    @Test("When sell commission is in the base asset, then inventory includes the fee outflow")
+    func sellCommissionInBaseAssetConsumesInventory() {
+        let trades = [
+            makeTrade(price: 50000, quantity: 1.0005, isBuyer: true),
+            makeTrade(
+                price: 60000, quantity: 1.0, isBuyer: false,
+                commission: 0.0005, commissionAsset: "BTC"
+            ),
+        ]
+        let result = calculator.calculate(trades)
+
+        #expect(result.remainingLots.isEmpty)
+        #expect(result.totalRemainingQuantity == 0)
+        #expect(abs(result.realizedPnL - 9975) < 0.0001)
+    }
 }
 
 // MARK: - Mixed Sequences

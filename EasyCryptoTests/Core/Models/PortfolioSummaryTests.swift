@@ -25,6 +25,8 @@ struct PortfolioSummaryTests {
         #expect(summary.totalUnrealizedPnL == 20000.0)
         #expect(summary.totalUnrealizedPnLPercent == 20.0)
         #expect(summary.totalRealizedPnL == 5000.0)
+        #expect(summary.totalPnL == 25000.0)
+        #expect(summary.totalPnLPercent == 25.0)
         #expect(summary.holdingsCount == 5)
     }
 
@@ -42,6 +44,8 @@ struct PortfolioSummaryTests {
         #expect(summary.totalUnrealizedPnL < 0)
         #expect(summary.totalUnrealizedPnLPercent < 0)
         #expect(summary.totalRealizedPnL < 0)
+        #expect(summary.totalPnL < 0)
+        #expect(summary.totalPnLPercent < 0)
     }
 
     @Test("When portfolio is empty, then all values are zero")
@@ -53,6 +57,8 @@ struct PortfolioSummaryTests {
         #expect(summary.totalUnrealizedPnL == 0)
         #expect(summary.totalUnrealizedPnLPercent == 0)
         #expect(summary.totalRealizedPnL == 0)
+        #expect(summary.totalPnL == 0)
+        #expect(summary.totalPnLPercent == 0)
         #expect(summary.holdingsCount == 0)
     }
 
@@ -77,6 +83,8 @@ struct PortfolioSummaryTests {
         #expect(summary.totalCurrentValueUSDT == 95000.0)
         #expect(summary.totalUnrealizedPnL == 15000.0)
         #expect(summary.totalRealizedPnL == 1500.0)
+        #expect(summary.totalPnL == 16500.0)
+        #expect(summary.totalPnLPercent == 20.625)
         #expect(summary.holdingsCount == 2)
     }
 
@@ -101,6 +109,8 @@ struct PortfolioSummaryTests {
         let summary = PortfolioSummary(from: [])
 
         #expect(summary.totalInvestedUSDT == 0)
+        #expect(summary.totalPnL == 0)
+        #expect(summary.totalPnLPercent == 0)
         #expect(summary.holdingsCount == 0)
     }
 }

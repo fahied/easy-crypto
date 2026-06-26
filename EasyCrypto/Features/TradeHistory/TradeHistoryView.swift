@@ -13,29 +13,38 @@ struct TradeHistoryView: View {
 
     var body: some View {
         Group {
-            if state.isLoading && state.trades.isEmpty {
+            if state.isLoading && state.details.isEmpty {
                 loadingView
-            } else if let error = state.error, state.trades.isEmpty {
+            } else if let error = state.error, state.details.isEmpty {
                 errorView(error)
-            } else if state.trades.isEmpty && !state.isLoading {
+            } else if state.details.isEmpty && !state.isLoading {
                 emptyView
             } else {
-                tradeContent
+                calendarContent
             }
         }
+        .navigationDestination(for: Date.self) { date in
+            DayDetailView(date: date, details: processor.details(on: date))
+        }
         .task {
-            guard state.trades.isEmpty else { return }
+            guard state.details.isEmpty else { return }
             await processor.handle(.loadHistory)
         }
     }
 
     // MARK: - Content
 
-    private var tradeContent: some View {
+    private var calendarContent: some View {
         ScrollView {
-            VStack(spacing: Theme.cardSpacing) {
+            VStack(spacing: Theme.sectionSpacing) {
                 filterChips
-                tradeList
+                monthSummary
+                CalendarMonthView(
+                    month: state.displayedMonth,
+                    dailyPnL: state.dailyPnL
+                )
+                .glassCard()
+                legend
             }
             .padding(.horizontal)
             .padding(.bottom, 20)
@@ -68,40 +77,80 @@ struct TradeHistoryView: View {
         }
     }
 
-    // MARK: - Trade List (grouped by date)
+    // MARK: - Month Summary
 
-    private var tradeList: some View {
-        let grouped = Dictionary(grouping: state.trades) { trade in
-            Calendar.current.startOfDay(for: trade.timestamp)
+    private var monthSummary: some View {
+        let entries = state.dailyPnL.values.filter {
+            Calendar.current.isDate(
+                $0.date,
+                equalTo: state.displayedMonth,
+                toGranularity: .month
+            )
         }
-        let sortedDates = grouped.keys.sorted(by: >)
+        let total = entries.reduce(0) { $0 + $1.realizedPnL }
+        let sellCount = entries.reduce(0) { $0 + $1.sellCount }
 
-        return LazyVStack(spacing: Theme.sectionSpacing) {
-            ForEach(sortedDates, id: \.self) { date in
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(date.formatted(date: .long, time: .omitted))
-                        .font(.subheadline.bold())
-                        .foregroundStyle(.secondary)
-
-                    VStack(spacing: 0) {
-                        if let trades = grouped[date] {
-                            ForEach(trades, id: \.binanceTradeId) { trade in
-                                TradeRowView(
-                                    date: trade.timestamp,
-                                    isBuyer: trade.isBuyer,
-                                    price: trade.price,
-                                    quantity: trade.quantity,
-                                    total: trade.quoteQuantity
-                                )
-                                if trade.binanceTradeId != trades.last?.binanceTradeId {
-                                    Divider().opacity(0.2)
-                                }
-                            }
-                        }
-                    }
-                    .glassCard()
-                }
+        return HStack(alignment: .center) {
+            Button {
+                processor.send(.previousMonth)
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, height: 44)
             }
+            .buttonStyle(.plain)
+
+            VStack(spacing: 4) {
+                Text(state.displayedMonth.formatted(.dateTime.year().month(.wide)))
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+                PnLLabel(value: total, showArrow: false, font: .title2.bold())
+                Text(sellCount == 1 ? "1 realized trade" : "\(sellCount) realized trades")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+
+            Button {
+                processor.send(.nextMonth)
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+        }
+        .glassCard()
+    }
+
+    // MARK: - Legend
+
+    private var legend: some View {
+        HStack(spacing: 16) {
+            legendItem(color: Theme.profit, label: "Profit")
+            legendItem(color: Theme.loss, label: "Loss")
+            Spacer()
+            Text("Tap a day for details")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private func legendItem(color: Color, label: String) -> some View {
+        HStack(spacing: 6) {
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(color.opacity(0.25))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .stroke(color.opacity(0.6), lineWidth: 1)
+                )
+                .frame(width: 14, height: 14)
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -109,9 +158,9 @@ struct TradeHistoryView: View {
 
     private var emptyView: some View {
         ContentUnavailableView {
-            Label("No Trades", systemImage: "arrow.left.arrow.right")
+            Label("No Trades", systemImage: "calendar")
         } description: {
-            Text("Sync your trades from the Portfolio tab to see history here.")
+            Text("Sync your trades from the Portfolio tab to see your daily P&L calendar here.")
         }
     }
 
@@ -142,6 +191,129 @@ struct TradeHistoryView: View {
             .buttonStyle(.borderedProminent)
             .tint(Theme.accent)
         }
+    }
+}
+
+// MARK: - Calendar Month View
+
+private struct CalendarMonthView: View {
+    let month: Date
+    let dailyPnL: [Date: DailyPnL]
+
+    private let calendar = Calendar.current
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
+
+    var body: some View {
+        VStack(spacing: 10) {
+            weekdayHeader
+            LazyVGrid(columns: columns, spacing: 6) {
+                ForEach(0..<leadingBlankCount, id: \.self) { index in
+                    Color.clear
+                        .frame(height: 54)
+                        .id("blank-\(index)")
+                }
+                ForEach(daysInMonth, id: \.self) { date in
+                    dayCell(for: date)
+                }
+            }
+        }
+    }
+
+    private var weekdayHeader: some View {
+        HStack(spacing: 6) {
+            ForEach(weekdaySymbols, id: \.self) { symbol in
+                Text(symbol)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func dayCell(for date: Date) -> some View {
+        let dayNumber = calendar.component(.day, from: date)
+        if let entry = dailyPnL[calendar.startOfDay(for: date)], entry.sellCount > 0 {
+            NavigationLink(value: calendar.startOfDay(for: date)) {
+                DayCellContent(dayNumber: dayNumber, pnl: entry.realizedPnL)
+            }
+            .buttonStyle(.plain)
+        } else {
+            DayCellContent(dayNumber: dayNumber, pnl: nil)
+        }
+    }
+
+    // MARK: - Date math
+
+    private var weekdaySymbols: [String] {
+        let symbols = calendar.veryShortStandaloneWeekdaySymbols
+        let first = calendar.firstWeekday - 1
+        return Array(symbols[first...] + symbols[..<first])
+    }
+
+    private var daysInMonth: [Date] {
+        guard let range = calendar.range(of: .day, in: .month, for: month) else { return [] }
+        let start = calendar.startOfMonth(for: month)
+        return range.compactMap { day in
+            calendar.date(byAdding: .day, value: day - 1, to: start)
+        }
+    }
+
+    private var leadingBlankCount: Int {
+        let start = calendar.startOfMonth(for: month)
+        let weekday = calendar.component(.weekday, from: start)
+        return (weekday - calendar.firstWeekday + 7) % 7
+    }
+}
+
+// MARK: - Day Cell Content
+
+private struct DayCellContent: View {
+    let dayNumber: Int
+    let pnl: Double?
+
+    private var color: Color {
+        guard let pnl else { return .clear }
+        if pnl > 0 { return Theme.profit }
+        if pnl < 0 { return Theme.loss }
+        return Theme.neutral
+    }
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text("\(dayNumber)")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(pnl == nil ? Color.secondary : .primary)
+
+            if let pnl {
+                Text(compactAmount(pnl))
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(color)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 54)
+        .background {
+            if pnl != nil {
+                RoundedRectangle(cornerRadius: Theme.smallRadius, style: .continuous)
+                    .fill(color.opacity(0.18))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Theme.smallRadius, style: .continuous)
+                            .stroke(color.opacity(0.45), lineWidth: 1)
+                    )
+            }
+        }
+    }
+
+    private func compactAmount(_ value: Double) -> String {
+        let prefix = value >= 0 ? "+" : "-"
+        let magnitude = abs(value)
+        if magnitude >= 1000 {
+            return "\(prefix)\((magnitude / 1000).formatted(.number.precision(.fractionLength(1))))k"
+        }
+        return "\(prefix)\(magnitude.formatted(.number.precision(.fractionLength(0))))"
     }
 }
 
@@ -179,22 +351,9 @@ private struct FilterChip: View {
 
 // MARK: - Previews
 
-#Preview("All trades") {
+#Preview("Calendar") {
     let container = PreviewSampleData.container
     let processor = TradeHistoryProcessor(modelContainer: container)
-    return NavigationStack {
-        TradeHistoryView(processor: processor)
-            .navigationTitle("History")
-    }
-    .preferredColorScheme(.dark)
-}
-
-#Preview("Filtered by coin") {
-    let container = PreviewSampleData.container
-    let processor = TradeHistoryProcessor(modelContainer: container)
-    processor.state.trades = PreviewSampleData.sampleTrades.filter { $0.asset == "BTC" }
-    processor.state.availableCoins = ["BTC", "ETH", "SOL"]
-    processor.state.selectedCoin = "BTC"
     return NavigationStack {
         TradeHistoryView(processor: processor)
             .navigationTitle("History")

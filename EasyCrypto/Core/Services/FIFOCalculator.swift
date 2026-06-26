@@ -41,10 +41,25 @@ nonisolated struct FIFOResult: Equatable, Sendable {
     )
 }
 
+/// Cost-basis breakdown for a single sell trade, derived from the FIFO lots it consumed.
+nonisolated struct SaleBreakdown: Equatable, Sendable {
+    /// Weighted average buy price of the lots consumed by this sell.
+    let costBasisPrice: Double
+    /// Original USDT invested in the quantity being sold (`costBasisPrice * quantitySold`).
+    let costBasisAmount: Double
+    /// Realized profit/loss for this individual sell (net of fees).
+    let realizedPnL: Double
+}
+
 // MARK: - Calculator (struct-with-closures pattern)
 
 nonisolated struct FIFOCalculator: Sendable {
     var calculate: @Sendable (_ trades: [FIFOTrade]) -> FIFOResult
+
+    /// Returns a per-trade array parallel to `trades`. Buys map to `nil`; each sell maps
+    /// to a `SaleBreakdown` describing the cost basis of the lots it consumed.
+    /// Trades must be passed in chronological order.
+    var saleBreakdowns: @Sendable (_ trades: [FIFOTrade]) -> [SaleBreakdown?]
 }
 
 // MARK: - Live Implementation
@@ -116,16 +131,80 @@ extension FIFOCalculator {
                 totalInvestedUSDT: totalInvested,
                 realizedPnL: realizedPnL
             )
+        },
+        saleBreakdowns: { trades in
+            let epsilon = 1e-12
+
+            var lots: [BuyLot] = []
+            var breakdowns: [SaleBreakdown?] = []
+            breakdowns.reserveCapacity(trades.count)
+
+            for trade in trades {
+                if trade.isBuyer {
+                    var qty = trade.quantity
+                    // Commission in the base asset reduces received quantity
+                    if trade.commissionAsset == trade.asset {
+                        qty -= trade.commission
+                    }
+                    if qty > epsilon {
+                        lots.append(BuyLot(price: trade.price, remainingQuantity: qty))
+                    }
+                    breakdowns.append(nil)
+                } else {
+                    // Sell — consume lots in FIFO order
+                    let feeInBaseAsset = trade.commissionAsset == trade.asset ? trade.commission : 0
+                    var sellQty = trade.quantity + feeInBaseAsset
+                    var remainingSaleQuantity = trade.quantity
+
+                    var saleRealizedPnL: Double = 0
+                    var soldQuantity: Double = 0
+                    var costBasisAmount: Double = 0
+
+                    while sellQty > 0 && !lots.isEmpty {
+                        let consumed = min(lots[0].remainingQuantity, sellQty)
+                        let soldPortion = min(consumed, remainingSaleQuantity)
+                        let feePortion = consumed - soldPortion
+
+                        saleRealizedPnL += soldPortion * (trade.price - lots[0].price)
+                        saleRealizedPnL -= feePortion * lots[0].price
+
+                        soldQuantity += soldPortion
+                        costBasisAmount += soldPortion * lots[0].price
+
+                        lots[0].remainingQuantity -= consumed
+                        sellQty -= consumed
+                        remainingSaleQuantity -= soldPortion
+
+                        if lots[0].remainingQuantity <= epsilon {
+                            lots.removeFirst()
+                        }
+                    }
+
+                    // Commission in USDT reduces realized proceeds
+                    if trade.commissionAsset == "USDT" {
+                        saleRealizedPnL -= trade.commission
+                    }
+
+                    let costBasisPrice = soldQuantity > epsilon ? costBasisAmount / soldQuantity : 0
+
+                    breakdowns.append(SaleBreakdown(
+                        costBasisPrice: costBasisPrice,
+                        costBasisAmount: costBasisAmount,
+                        realizedPnL: saleRealizedPnL
+                    ))
+                }
+            }
+
+            return breakdowns
         }
     )
 }
-
-// MARK: - Preview & Noop
 
 extension FIFOCalculator {
     static let preview = live
 
     static let noop = FIFOCalculator(
-        calculate: { _ in .empty }
+        calculate: { _ in .empty },
+        saleBreakdowns: { trades in trades.map { _ in nil } }
     )
 }
