@@ -6,16 +6,16 @@ advance:
   primary_component: "core-models"
   components: ["core-models"]
   started_at: "2026-06-26T14:30:29.000000+00:00"
-  implementation_completed_at: ~
+  implementation_completed_at: "2026-06-26T14:38:14Z"
   review_time_estimate_minutes: 15
   review_time_actual_minutes: ~
   pr_links: []
   reviewability_score: 0
   risk_flags: []
-  evidence: []
+  evidence: ["tdd:red-green", "tests:unit"]
   # Populated by `arrive usage import` / the LiteLLM callback — leave empty when authoring.
   model_usage: []
-  status: planned
+  status: complete
 ---
 
 ## Objective
@@ -35,11 +35,10 @@ After this advance:
 
 ## Planned Implementation Tasks
 
-- [ ] branch: create or confirm feature branch for this advance
-- [ ] test: model round-trips through SwiftData; defaults applied (threshold 100,
+- [x] test: model round-trips through SwiftData; defaults applied (threshold 100,
       disabled by default, baseline 0)
-- [ ] feat: add `PriceAlertConfig` SwiftData model in core-models
-- [ ] feat: register the model in the SwiftData `ModelContainer` schema
+- [x] feat: add `PriceAlertConfig` SwiftData model in core-models
+- [x] feat: register the model in the SwiftData `ModelContainer` schema
 
 ## Bug Fixes
 
@@ -54,8 +53,8 @@ After this advance:
 
 ## Evidence
 
-- [ ] tdd:red-green
-- [ ] tests:unit
+- [x] tdd:red-green
+- [x] tests:unit (PriceAlertConfigTests — 5 passed)
 
 ## CI Evidence Notes
 
@@ -68,3 +67,8 @@ After this advance:
 
 ### 2026-06-26 - docs: draft advance
 - arrive/systems/easycrypto-core/advances/ADV-CORE-MODELS-001.md: created advance plan
+
+### 2026-06-26 - feat: add PriceAlertConfig model
+- EasyCrypto/Core/Models/PriceAlertConfig.swift: new @Model (symbol unique; isEnabled, thresholdUSD=100, lastNotifiedProfit defaults)
+- EasyCrypto/EasyCryptoApp.swift: registered PriceAlertConfig in ModelContainer schema
+- EasyCryptoTests/Core/Models/PriceAlertConfigTests.swift: 5 tests (defaults, explicit fields, persistence, fetch-by-symbol, baseline update) — all pass
