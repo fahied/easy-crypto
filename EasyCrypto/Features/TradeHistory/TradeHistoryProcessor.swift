@@ -94,7 +94,9 @@ class TradeHistoryProcessor: Processor {
         state.dailyPnL = buildDailyPnL(from: details)
     }
 
-    /// Enriches each trade with FIFO cost-basis data, computed per asset in chronological order.
+    /// Enriches each trade with FIFO cost-basis data, computed per asset in chronological
+    /// order, then aggregates fills belonging to the same order (one user order can fill
+    /// across multiple trades sharing an `orderId`) into a single transaction.
     private func buildDetails(from allTrades: [Trade], coin: String?) -> [DayTradeDetail] {
         let byAsset = Dictionary(grouping: allTrades) { $0.asset }
         var details: [DayTradeDetail] = []
@@ -115,25 +117,65 @@ class TradeHistoryProcessor: Processor {
             }
             let breakdowns = fifoCalculator.saleBreakdowns(fifoTrades)
 
-            for (index, trade) in chronological.enumerated() {
-                let breakdown = breakdowns[index]
-                details.append(DayTradeDetail(
-                    id: "\(trade.symbol)-\(trade.binanceTradeId)",
-                    asset: trade.asset,
-                    symbol: trade.symbol,
-                    timestamp: trade.timestamp,
-                    isBuyer: trade.isBuyer,
-                    price: trade.price,
-                    quantity: trade.quantity,
-                    total: trade.quoteQuantity,
-                    costBasisPrice: breakdown?.costBasisPrice,
-                    invested: trade.isBuyer ? trade.quoteQuantity : breakdown?.costBasisAmount,
-                    realizedPnL: breakdown?.realizedPnL
-                ))
+            // Pair each fill with its FIFO breakdown, preserving chronological order.
+            let fills = Array(zip(chronological, breakdowns))
+
+            // Group fills by order. Buy/sell sides are inherently distinct orders, but we
+            // include the side in the key defensively in case an id is ever reused.
+            let byOrder = Dictionary(grouping: fills) { fill in
+                OrderKey(symbol: fill.0.symbol, orderId: fill.0.orderId, isBuyer: fill.0.isBuyer)
+            }
+
+            for order in byOrder.values {
+                details.append(aggregate(fills: order))
             }
         }
 
         return details.sorted { $0.timestamp > $1.timestamp }
+    }
+
+    /// Collapses the fills of a single order into one `DayTradeDetail` with summed
+    /// quantities/totals and a quantity-weighted average execution price.
+    private func aggregate(fills: [(Trade, SaleBreakdown?)]) -> DayTradeDetail {
+        let ordered = fills.sorted { $0.0.timestamp < $1.0.timestamp }
+        let first = ordered[0].0
+        let totalQuantity = ordered.reduce(0) { $0 + $1.0.quantity }
+        let totalQuote = ordered.reduce(0) { $0 + $1.0.quoteQuantity }
+        let avgPrice = totalQuantity > 0 ? totalQuote / totalQuantity : first.price
+        let timestamp = ordered.map(\.0.timestamp).max() ?? first.timestamp
+
+        if first.isBuyer {
+            return DayTradeDetail(
+                id: "\(first.symbol)-order-\(first.orderId)-buy",
+                asset: first.asset,
+                symbol: first.symbol,
+                timestamp: timestamp,
+                isBuyer: true,
+                price: avgPrice,
+                quantity: totalQuantity,
+                total: totalQuote,
+                costBasisPrice: nil,
+                invested: totalQuote,
+                realizedPnL: nil
+            )
+        }
+
+        let costBasisAmount = ordered.reduce(0.0) { $0 + ($1.1?.costBasisAmount ?? 0) }
+        let realizedPnL = ordered.reduce(0.0) { $0 + ($1.1?.realizedPnL ?? 0) }
+        let costBasisPrice = totalQuantity > 0 ? costBasisAmount / totalQuantity : nil
+        return DayTradeDetail(
+            id: "\(first.symbol)-order-\(first.orderId)-sell",
+            asset: first.asset,
+            symbol: first.symbol,
+            timestamp: timestamp,
+            isBuyer: false,
+            price: avgPrice,
+            quantity: totalQuantity,
+            total: totalQuote,
+            costBasisPrice: costBasisPrice,
+            invested: costBasisAmount,
+            realizedPnL: realizedPnL
+        )
     }
 
     private func buildDailyPnL(from details: [DayTradeDetail]) -> [Date: DailyPnL] {
@@ -161,4 +203,11 @@ class TradeHistoryProcessor: Processor {
     private func discoverCoins(from trades: [Trade]) -> [String] {
         Array(Set(trades.map(\.asset))).sorted()
     }
+}
+
+/// Identifies a single user order so its individual fills can be aggregated.
+private struct OrderKey: Hashable {
+    let symbol: String
+    let orderId: Int64
+    let isBuyer: Bool
 }
