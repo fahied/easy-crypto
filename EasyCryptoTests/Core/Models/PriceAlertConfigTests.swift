@@ -27,6 +27,7 @@ struct PriceAlertConfigTests {
         #expect(config.isEnabled == false)
         #expect(config.thresholdUSD == 100)
         #expect(config.lastNotifiedProfit == 0)
+        #expect(config.lastNotifiedLoss == 0)
     }
 
     @Test("When created with explicit fields, then all properties are set")
@@ -100,5 +101,24 @@ struct PriceAlertConfigTests {
         let fetched = try context.fetch(descriptor)
         let first = try #require(fetched.first)
         #expect(first.lastNotifiedProfit == 100)
+    }
+
+    @Test("When the loss baseline is updated, then save persists the change")
+    @MainActor
+    func updateLossBaseline() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let config = PriceAlertConfig(symbol: "BTCUSDT", isEnabled: true, lastNotifiedLoss: 0)
+        context.insert(config)
+        try context.save()
+
+        config.lastNotifiedLoss = -250
+        try context.save()
+
+        let descriptor = FetchDescriptor<PriceAlertConfig>()
+        let fetched = try context.fetch(descriptor)
+        let first = try #require(fetched.first)
+        #expect(first.lastNotifiedLoss == -250)
     }
 }

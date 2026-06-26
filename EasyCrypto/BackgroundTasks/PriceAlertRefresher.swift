@@ -49,6 +49,7 @@ enum PriceAlertRefresher {
                 isEnabled: config.isEnabled,
                 thresholdUSD: config.thresholdUSD,
                 lastNotifiedProfit: config.lastNotifiedProfit,
+                lastNotifiedLoss: config.lastNotifiedLoss,
                 trades: fifoTrades
             )
         }
@@ -56,13 +57,17 @@ enum PriceAlertRefresher {
         let fired = try await alertService.evaluate(inputs)
         guard !fired.isEmpty else { return }
 
-        let baselineBySymbol = Dictionary(
-            fired.map { ($0.symbol, $0.newBaseline) },
-            uniquingKeysWith: { _, latest in latest }
+        let configBySymbol = Dictionary(
+            configs.map { ($0.symbol, $0) },
+            uniquingKeysWith: { first, _ in first }
         )
-        for config in configs {
-            if let newBaseline = baselineBySymbol[config.symbol] {
-                config.lastNotifiedProfit = newBaseline
+        for alert in fired {
+            guard let config = configBySymbol[alert.symbol] else { continue }
+            switch alert.direction {
+            case .gain:
+                config.lastNotifiedProfit = alert.newBaseline
+            case .loss:
+                config.lastNotifiedLoss = alert.newBaseline
             }
         }
         try modelContext.save()

@@ -72,6 +72,21 @@ struct PriceAlertRefresherTests {
         #expect(config.lastNotifiedProfit == 0)
     }
 
+    @Test("When a loss alert fires, then the loss baseline advances and the profit baseline is untouched")
+    func lossPersistsLossBaseline() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        insertBTCBuy(context, price: 50000, quantity: 1) // @49800 → profit -200
+        context.insert(PriceAlertConfig(symbol: "BTCUSDT", isEnabled: true, thresholdUSD: 100, lastNotifiedProfit: 0, lastNotifiedLoss: 0))
+        try context.save()
+
+        try await PriceAlertRefresher.run(modelContext: context, alertService: alertService(price: 49800))
+
+        let config = try #require(try context.fetch(FetchDescriptor<PriceAlertConfig>()).first)
+        #expect(config.lastNotifiedLoss == -200)
+        #expect(config.lastNotifiedProfit == 0)
+    }
+
     @Test("When the profit increase is below the threshold, then the baseline is unchanged")
     func belowThresholdLeavesBaseline() async throws {
         let container = try makeContainer()

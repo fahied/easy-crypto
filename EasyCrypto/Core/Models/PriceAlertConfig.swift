@@ -8,9 +8,10 @@ import SwiftData
 
 /// Per-symbol configuration for background profit-threshold price alerts.
 ///
-/// `lastNotifiedProfit` is the baseline unrealized profit at the time the most
-/// recent alert fired; a new alert fires only once the current profit exceeds
-/// this baseline by at least `thresholdUSD`.
+/// `lastNotifiedProfit` / `lastNotifiedLoss` are the baseline unrealized profits at
+/// the time the most recent gain / loss alert fired. A gain alert fires only once
+/// the current profit rises `thresholdUSD` above `lastNotifiedProfit`; a loss alert
+/// fires only once it falls `thresholdUSD` below `lastNotifiedLoss`.
 @Model
 final class PriceAlertConfig {
     #Unique<PriceAlertConfig>([\.symbol])
@@ -19,16 +20,19 @@ final class PriceAlertConfig {
     var isEnabled: Bool
     var thresholdUSD: Double
     var lastNotifiedProfit: Double
+    var lastNotifiedLoss: Double = 0
 
     init(
         symbol: String,
         isEnabled: Bool = false,
         thresholdUSD: Double = 100,
-        lastNotifiedProfit: Double = 0
+        lastNotifiedProfit: Double = 0,
+        lastNotifiedLoss: Double = 0
     ) {
         self.symbol = symbol
         self.isEnabled = isEnabled
         self.thresholdUSD = thresholdUSD
         self.lastNotifiedProfit = lastNotifiedProfit
+        self.lastNotifiedLoss = lastNotifiedLoss
     }
 }

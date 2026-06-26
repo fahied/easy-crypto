@@ -33,6 +33,7 @@ struct PriceAlertServiceTests {
         isEnabled: Bool = true,
         threshold: Double = 100,
         baseline: Double = 0,
+        lossBaseline: Double = 0,
         trades: [FIFOTrade]
     ) -> PriceAlertConfigInput {
         PriceAlertConfigInput(
@@ -41,6 +42,7 @@ struct PriceAlertServiceTests {
             isEnabled: isEnabled,
             thresholdUSD: threshold,
             lastNotifiedProfit: baseline,
+            lastNotifiedLoss: lossBaseline,
             trades: trades
         )
     }
@@ -61,6 +63,7 @@ struct PriceAlertServiceTests {
 
         #expect(fired.count == 1)
         #expect(fired.first?.symbol == "BTCUSDT")
+        #expect(fired.first?.direction == .gain)
         #expect(fired.first?.currentProfit == 10000)
         #expect(fired.first?.newBaseline == 10000)
     }
@@ -151,6 +154,56 @@ struct PriceAlertServiceTests {
         let fired = try await service.evaluate([cfg])
 
         #expect(fired.isEmpty)
+    }
+
+    @Test("When the loss drop meets the threshold, then a loss alert fires and advances the loss baseline")
+    func firesLossWhenDropMeetsThreshold() async throws {
+        let service = PriceAlertService.live(
+            priceService: priceService(["BTCUSDT": 49800]),
+            fifoCalculator: .live,
+            notificationService: .noop
+        )
+        // Buy 1 BTC @ 50000; @49800 → unrealized profit -200; drop of 200 from baseline 0.
+        let cfg = config(lossBaseline: 0, trades: [buy(1, at: 50000, asset: "BTC")])
+
+        let fired = try await service.evaluate([cfg])
+
+        #expect(fired.count == 1)
+        #expect(fired.first?.direction == .loss)
+        #expect(fired.first?.currentProfit == -200)
+        #expect(fired.first?.newBaseline == -200)
+    }
+
+    @Test("When the loss drop is below the threshold, then it does not fire")
+    func doesNotFireLossBelowThreshold() async throws {
+        let service = PriceAlertService.live(
+            priceService: priceService(["BTCUSDT": 49950]),
+            fifoCalculator: .live,
+            notificationService: .noop
+        )
+        // @49950 → profit -50; drop of 50 (< 100).
+        let cfg = config(lossBaseline: 0, trades: [buy(1, at: 50000, asset: "BTC")])
+
+        let fired = try await service.evaluate([cfg])
+
+        #expect(fired.isEmpty)
+    }
+
+    @Test("When re-evaluated at the advanced loss baseline, then it does not fire again on the same decline")
+    func noDoubleFireOnSameLoss() async throws {
+        let service = PriceAlertService.live(
+            priceService: priceService(["BTCUSDT": 49800]),
+            fifoCalculator: .live,
+            notificationService: .noop
+        )
+        let trades = [buy(1, at: 50000, asset: "BTC")]
+
+        let first = try await service.evaluate([config(lossBaseline: 0, trades: trades)])
+        let newLossBaseline = try #require(first.first?.newBaseline)
+
+        let second = try await service.evaluate([config(lossBaseline: newLossBaseline, trades: trades)])
+
+        #expect(second.isEmpty)
     }
 }
 
