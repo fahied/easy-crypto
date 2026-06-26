@@ -30,9 +30,22 @@
 		5B2259DD2FC2C87D00C8D872 /* EasyCrypto.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = EasyCrypto.xctestplan; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		5BA1A1A12FC2C87D00C8D872 /* Exceptions for "EasyCrypto" folder in "EasyCrypto" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 5B22598C2FC2B9F000C8D872 /* EasyCrypto */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		5B22598F2FC2B9F000C8D872 /* EasyCrypto */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5BA1A1A12FC2C87D00C8D872 /* Exceptions for "EasyCrypto" folder in "EasyCrypto" target */,
+			);
 			path = EasyCrypto;
 			sourceTree = "<group>";
 		};
@@ -417,6 +430,7 @@
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				INFOPLIST_FILE = EasyCrypto/Info.plist;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -452,6 +466,7 @@
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				INFOPLIST_FILE = EasyCrypto/Info.plist;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;

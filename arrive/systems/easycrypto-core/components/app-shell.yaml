@@ -10,6 +10,8 @@ selectors:
   paths:
     - "EasyCrypto/EasyCryptoApp.swift"
     - "EasyCrypto/ContentView.swift"
+    - "EasyCrypto/BackgroundTasks/**"
+    - "EasyCrypto/Info.plist"
   build_modules: []
   tags: []
   contracts: []

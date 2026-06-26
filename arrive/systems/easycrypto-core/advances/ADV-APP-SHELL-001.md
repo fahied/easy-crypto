@@ -6,16 +6,16 @@ advance:
   primary_component: "app-shell"
   components: ["app-shell"]
   started_at: "2026-06-26T14:30:29.000000+00:00"
-  implementation_completed_at: ~
+  implementation_completed_at: "2026-06-26T14:49:17Z"
   review_time_estimate_minutes: 25
   review_time_actual_minutes: ~
   pr_links: []
   reviewability_score: 0
   risk_flags: ["concurrency"]
-  evidence: []
+  evidence: ["tdd:red-green", "tests:unit"]
   # Populated by `arrive usage import` / the LiteLLM callback — leave empty when authoring.
   model_usage: []
-  status: planned
+  status: complete
 ---
 
 ## Objective
@@ -41,13 +41,14 @@ After this advance:
 
 ## Planned Implementation Tasks
 
-- [ ] branch: create or confirm feature branch for this advance
-- [ ] test: scheduler wiring — reschedule requested on background; expiration
-      handler cancels in-flight work (testable scheduler seam)
-- [ ] feat: register task identifier + handler in `EasyCryptoApp`
-- [ ] feat: reschedule on `scenePhase` background; persist advanced baselines
-- [ ] chore: add Info.plist keys (`BGTaskSchedulerPermittedIdentifiers`,
-      `UIBackgroundModes: fetch`)
+- [x] test: data flow — `PriceAlertRefresher.run` loads enabled configs + trades,
+      evaluates, and persists advanced baselines (in-memory SwiftData). BGTask
+      scheduler glue itself is thin/integration-only (`BGAppRefreshTask` cannot be
+      unit-constructed), so the testable seam is the refresher
+- [x] feat: register task identifier + handler in `EasyCryptoApp`
+- [x] feat: reschedule on `scenePhase` background; persist advanced baselines
+- [x] chore: add Info.plist keys (`BGTaskSchedulerPermittedIdentifiers`,
+      `UIBackgroundModes: fetch`) via partial Info.plist merged with INFOPLIST_FILE
 
 ## Bug Fixes
 
@@ -64,8 +65,8 @@ After this advance:
 
 ## Evidence
 
-- [ ] tdd:red-green
-- [ ] tests:unit
+- [x] tdd:red-green
+- [x] tests:unit (PriceAlertRefresherTests 3 — all pass; full EasyCryptoTests suite green)
 
 ## CI Evidence Notes
 
@@ -78,3 +79,11 @@ After this advance:
 
 ### 2026-06-26 - docs: draft advance
 - arrive/systems/easycrypto-core/advances/ADV-APP-SHELL-001.md: created advance plan
+
+### 2026-06-26 - feat: background refresh wiring
+- EasyCrypto/BackgroundTasks/PriceAlertRefresher.swift: testable runner (configs+trades → evaluate → persist baselines)
+- EasyCrypto/EasyCryptoApp.swift: register BGAppRefreshTask, scheduleAppRefresh (~5 min), handle with expirationHandler, reschedule on scenePhase .background; construct NotificationService + PriceAlertService
+- EasyCrypto/Info.plist: BGTaskSchedulerPermittedIdentifiers + UIBackgroundModes(fetch)
+- EasyCrypto.xcodeproj/project.pbxproj: INFOPLIST_FILE for app configs; Info.plist excluded from resources via synchronized-group membershipExceptions
+- arrive/.../components/app-shell.yaml: selectors include BackgroundTasks/** and Info.plist
+- EasyCryptoTests/Core/Services/PriceAlertRefresherTests.swift: 3 tests — verified merged Info.plist (background arrays + scene manifest coexist)
