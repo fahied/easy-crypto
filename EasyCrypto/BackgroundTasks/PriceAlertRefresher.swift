@@ -50,6 +50,8 @@ enum PriceAlertRefresher {
                 thresholdUSD: config.thresholdUSD,
                 lastNotifiedProfit: config.lastNotifiedProfit,
                 lastNotifiedLoss: config.lastNotifiedLoss,
+                percentThreshold: config.percentThreshold,
+                referencePrice: config.referencePrice,
                 trades: fifoTrades
             )
         }
@@ -68,6 +70,8 @@ enum PriceAlertRefresher {
                 config.lastNotifiedProfit = alert.newBaseline
             case .loss:
                 config.lastNotifiedLoss = alert.newBaseline
+            case .priceUp, .priceDown, .priceReference:
+                config.referencePrice = alert.newBaseline
             }
         }
         try modelContext.save()

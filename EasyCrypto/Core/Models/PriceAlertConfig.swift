@@ -21,18 +21,24 @@ final class PriceAlertConfig {
     var thresholdUSD: Double
     var lastNotifiedProfit: Double
     var lastNotifiedLoss: Double = 0
+    var percentThreshold: Double = 5
+    var referencePrice: Double = 0
 
     init(
         symbol: String,
         isEnabled: Bool = false,
         thresholdUSD: Double = 100,
         lastNotifiedProfit: Double = 0,
-        lastNotifiedLoss: Double = 0
+        lastNotifiedLoss: Double = 0,
+        percentThreshold: Double = 5,
+        referencePrice: Double = 0
     ) {
         self.symbol = symbol
         self.isEnabled = isEnabled
         self.thresholdUSD = thresholdUSD
         self.lastNotifiedProfit = lastNotifiedProfit
         self.lastNotifiedLoss = lastNotifiedLoss
+        self.percentThreshold = percentThreshold
+        self.referencePrice = referencePrice
     }
 }

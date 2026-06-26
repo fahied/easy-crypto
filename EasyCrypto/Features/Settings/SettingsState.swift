@@ -12,6 +12,7 @@ struct PriceAlertRow: Identifiable, Sendable, Equatable {
     let asset: String       // e.g. "BTC"
     var isEnabled: Bool
     var thresholdUSD: Double
+    var percentThreshold: Double
 }
 
 struct SettingsState: ViewState {

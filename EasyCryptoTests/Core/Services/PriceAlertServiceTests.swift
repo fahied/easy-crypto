@@ -34,6 +34,8 @@ struct PriceAlertServiceTests {
         threshold: Double = 100,
         baseline: Double = 0,
         lossBaseline: Double = 0,
+        percentThreshold: Double = 0,
+        referencePrice: Double = 0,
         trades: [FIFOTrade]
     ) -> PriceAlertConfigInput {
         PriceAlertConfigInput(
@@ -43,6 +45,8 @@ struct PriceAlertServiceTests {
             thresholdUSD: threshold,
             lastNotifiedProfit: baseline,
             lastNotifiedLoss: lossBaseline,
+            percentThreshold: percentThreshold,
+            referencePrice: referencePrice,
             trades: trades
         )
     }
@@ -204,6 +208,78 @@ struct PriceAlertServiceTests {
         let second = try await service.evaluate([config(lossBaseline: newLossBaseline, trades: trades)])
 
         #expect(second.isEmpty)
+    }
+
+    @Test("When the reference price is unset, then it is seeded silently without a price alert")
+    func seedsReferenceSilently() async throws {
+        var scheduled = false
+        let spy = NotificationService(
+            requestAuthorization: { true },
+            isAuthorized: { true },
+            scheduleAlert: { _ in scheduled = true }
+        )
+        let service = PriceAlertService.live(
+            priceService: priceService(["BTCUSDT": 60000]),
+            fifoCalculator: .live,
+            notificationService: spy
+        )
+        let cfg = config(percentThreshold: 5, referencePrice: 0, trades: [])
+
+        let fired = try await service.evaluate([cfg])
+
+        #expect(fired.count == 1)
+        #expect(fired.first?.direction == .priceReference)
+        #expect(fired.first?.newBaseline == 60000)
+        #expect(scheduled == false)
+    }
+
+    @Test("When price rises past the percent threshold, then a price-up alert fires and resets the reference")
+    func firesPriceUp() async throws {
+        let service = PriceAlertService.live(
+            priceService: priceService(["BTCUSDT": 105000]),
+            fifoCalculator: .live,
+            notificationService: .noop
+        )
+        // reference 100000, +5% threshold, price 105000 = +5%.
+        let cfg = config(percentThreshold: 5, referencePrice: 100000, trades: [])
+
+        let fired = try await service.evaluate([cfg])
+
+        #expect(fired.count == 1)
+        #expect(fired.first?.direction == .priceUp)
+        #expect(fired.first?.newBaseline == 105000)
+    }
+
+    @Test("When price falls past the percent threshold, then a price-down alert fires")
+    func firesPriceDown() async throws {
+        let service = PriceAlertService.live(
+            priceService: priceService(["BTCUSDT": 94000]),
+            fifoCalculator: .live,
+            notificationService: .noop
+        )
+        // reference 100000, price 94000 = -6% (<= -5%).
+        let cfg = config(percentThreshold: 5, referencePrice: 100000, trades: [])
+
+        let fired = try await service.evaluate([cfg])
+
+        #expect(fired.count == 1)
+        #expect(fired.first?.direction == .priceDown)
+        #expect(fired.first?.newBaseline == 94000)
+    }
+
+    @Test("When the price move is below the percent threshold, then no price alert fires")
+    func noPriceAlertBelowThreshold() async throws {
+        let service = PriceAlertService.live(
+            priceService: priceService(["BTCUSDT": 103000]),
+            fifoCalculator: .live,
+            notificationService: .noop
+        )
+        // reference 100000, price 103000 = +3% (< 5%).
+        let cfg = config(percentThreshold: 5, referencePrice: 100000, trades: [])
+
+        let fired = try await service.evaluate([cfg])
+
+        #expect(fired.isEmpty)
     }
 }
 

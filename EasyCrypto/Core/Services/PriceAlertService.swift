@@ -12,6 +12,10 @@ import os
 nonisolated enum AlertDirection: Sendable, Equatable {
     case gain
     case loss
+    case priceUp
+    case priceDown
+    /// Silent: initialize `referencePrice` to the current price without notifying.
+    case priceReference
 }
 
 /// One asset's alert configuration plus the trades needed to value it.
@@ -22,6 +26,8 @@ nonisolated struct PriceAlertConfigInput: Sendable, Equatable {
     let thresholdUSD: Double
     let lastNotifiedProfit: Double
     let lastNotifiedLoss: Double
+    let percentThreshold: Double
+    let referencePrice: Double
     let trades: [FIFOTrade]
 }
 
@@ -108,6 +114,38 @@ extension PriceAlertService {
                             currentProfit: profit,
                             newBaseline: profit
                         ))
+                    }
+
+                    // Percent move: market price vs the stored reference price.
+                    if config.percentThreshold > 0, price > 0 {
+                        if config.referencePrice <= 0 {
+                            // Seed the reference silently; no notification on first sight.
+                            fired.append(FiredAlert(
+                                symbol: config.symbol,
+                                asset: config.asset,
+                                direction: .priceReference,
+                                currentProfit: profit,
+                                newBaseline: price
+                            ))
+                        } else {
+                            let changePercent = (price - config.referencePrice) / config.referencePrice * 100
+                            if abs(changePercent) >= config.percentThreshold {
+                                let direction: AlertDirection = changePercent >= 0 ? .priceUp : .priceDown
+                                let arrow = changePercent >= 0 ? "up" : "down"
+                                await notificationService.scheduleAlert(LocalAlert(
+                                    id: "price-alert-pct-\(config.symbol)",
+                                    title: "\(config.asset) price \(arrow) \(String(format: "%.1f", abs(changePercent)))%",
+                                    body: "\(config.asset) price is now \(Int(price.rounded())) USDT."
+                                ))
+                                fired.append(FiredAlert(
+                                    symbol: config.symbol,
+                                    asset: config.asset,
+                                    direction: direction,
+                                    currentProfit: profit,
+                                    newBaseline: price
+                                ))
+                            }
+                        }
                     }
                 }
 

@@ -48,6 +48,8 @@ class SettingsProcessor: Processor {
             await setAlertEnabled(symbol: symbol, enabled: enabled)
         case .setAlertThreshold(let symbol, let threshold):
             await setAlertThreshold(symbol: symbol, threshold: threshold)
+        case .setAlertPercent(let symbol, let percent):
+            await setAlertPercent(symbol: symbol, percent: percent)
         }
     }
 
@@ -150,7 +152,8 @@ class SettingsProcessor: Processor {
                     symbol: symbol,
                     asset: asset,
                     isEnabled: existing?.isEnabled ?? false,
-                    thresholdUSD: existing?.thresholdUSD ?? 100
+                    thresholdUSD: existing?.thresholdUSD ?? 100,
+                    percentThreshold: existing?.percentThreshold ?? 5
                 )
             }
         } catch {
@@ -179,6 +182,17 @@ class SettingsProcessor: Processor {
             config.thresholdUSD = threshold
             try modelContext.save()
             updateRow(symbol: symbol) { $0.thresholdUSD = threshold }
+        } catch {
+            state.error = error.localizedDescription
+        }
+    }
+
+    private func setAlertPercent(symbol: String, percent: Double) async {
+        do {
+            let config = try upsertConfig(symbol: symbol)
+            config.percentThreshold = percent
+            try modelContext.save()
+            updateRow(symbol: symbol) { $0.percentThreshold = percent }
         } catch {
             state.error = error.localizedDescription
         }

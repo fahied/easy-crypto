@@ -242,6 +242,24 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+
+                HStack {
+                    Text("Notify on price move of")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    TextField("5", value: Binding(
+                        get: { row.percentThreshold },
+                        set: { processor.send(.setAlertPercent(symbol: row.symbol, percent: $0)) }
+                    ), format: .number)
+                    .keyboardType(.decimalPad)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 70)
+                    .textFieldStyle(.roundedBorder)
+                    Text("%")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }

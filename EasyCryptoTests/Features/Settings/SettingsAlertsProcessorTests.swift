@@ -99,6 +99,22 @@ struct SettingsAlertsProcessorTests {
         #expect(processor.state.alertRows.first { $0.symbol == "BTCUSDT" }?.thresholdUSD == 250)
     }
 
+    @Test("When setting a percent threshold, then it is persisted and the row updates")
+    func percentPersists() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        insertTrade(context, id: 1, asset: "BTC")
+        try context.save()
+
+        let processor = makeProcessor(container: container)
+        await processor.handle(.loadAlerts)
+        await processor.handle(.setAlertPercent(symbol: "BTCUSDT", percent: 10))
+
+        let config = try #require(try context.fetch(FetchDescriptor<PriceAlertConfig>()).first)
+        #expect(config.percentThreshold == 10)
+        #expect(processor.state.alertRows.first { $0.symbol == "BTCUSDT" }?.percentThreshold == 10)
+    }
+
     @Test("When requesting permission with a granting service, then state reflects authorized")
     func requestPermissionGranted() async throws {
         let processor = makeProcessor(container: try makeContainer(), notificationService: .preview)

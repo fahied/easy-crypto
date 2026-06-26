@@ -28,6 +28,8 @@ struct PriceAlertConfigTests {
         #expect(config.thresholdUSD == 100)
         #expect(config.lastNotifiedProfit == 0)
         #expect(config.lastNotifiedLoss == 0)
+        #expect(config.percentThreshold == 5)
+        #expect(config.referencePrice == 0)
     }
 
     @Test("When created with explicit fields, then all properties are set")

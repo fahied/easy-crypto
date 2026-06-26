@@ -87,6 +87,25 @@ struct PriceAlertRefresherTests {
         #expect(config.lastNotifiedProfit == 0)
     }
 
+    @Test("When a percent-move alert fires, then the reference price resets to the current price")
+    func percentMovePersistsReferencePrice() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        context.insert(PriceAlertConfig(
+            symbol: "BTCUSDT",
+            isEnabled: true,
+            thresholdUSD: 100,
+            percentThreshold: 5,
+            referencePrice: 100000
+        ))
+        try context.save()
+
+        try await PriceAlertRefresher.run(modelContext: context, alertService: alertService(price: 105000))
+
+        let config = try #require(try context.fetch(FetchDescriptor<PriceAlertConfig>()).first)
+        #expect(config.referencePrice == 105000)
+    }
+
     @Test("When the profit increase is below the threshold, then the baseline is unchanged")
     func belowThresholdLeavesBaseline() async throws {
         let container = try makeContainer()
