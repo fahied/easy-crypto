@@ -18,4 +18,8 @@ enum SettingsIntent: Intent {
     case testConnection
     case clearAllData
     case loadCredentials
+    case loadAlerts
+    case requestNotificationPermission
+    case setAlertEnabled(symbol: String, enabled: Bool)
+    case setAlertThreshold(symbol: String, threshold: Double)
 }

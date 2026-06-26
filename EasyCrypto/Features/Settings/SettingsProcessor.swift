@@ -13,15 +13,18 @@ class SettingsProcessor: Processor {
 
     private let keychainService: KeychainService
     private let apiClient: BinanceAPIClient
+    private let notificationService: NotificationService
     private let modelContext: ModelContext
 
     init(
         keychainService: KeychainService,
         apiClient: BinanceAPIClient,
-        modelContainer: ModelContainer
+        modelContainer: ModelContainer,
+        notificationService: NotificationService = .live
     ) {
         self.keychainService = keychainService
         self.apiClient = apiClient
+        self.notificationService = notificationService
         self.modelContext = ModelContext(modelContainer)
     }
 
@@ -37,6 +40,14 @@ class SettingsProcessor: Processor {
             await clearAllData()
         case .loadCredentials:
             await loadCredentials()
+        case .loadAlerts:
+            await loadAlerts()
+        case .requestNotificationPermission:
+            await requestNotificationPermission()
+        case .setAlertEnabled(let symbol, let enabled):
+            await setAlertEnabled(symbol: symbol, enabled: enabled)
+        case .setAlertThreshold(let symbol, let threshold):
+            await setAlertThreshold(symbol: symbol, threshold: threshold)
         }
     }
 
@@ -118,5 +129,78 @@ class SettingsProcessor: Processor {
 
         let syncDescriptor = FetchDescriptor<SyncMetadata>()
         state.syncedSymbolCount = try modelContext.fetchCount(syncDescriptor)
+    }
+
+    // MARK: - Price Alerts
+
+    private func loadAlerts() async {
+        state.notificationsAuthorized = await notificationService.isAuthorized()
+        do {
+            let trades = try modelContext.fetch(FetchDescriptor<Trade>())
+            let assets = Set(trades.map { $0.asset }).sorted()
+            let configs = try modelContext.fetch(FetchDescriptor<PriceAlertConfig>())
+            let configBySymbol = Dictionary(
+                configs.map { ($0.symbol, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
+            state.alertRows = assets.map { asset in
+                let symbol = "\(asset)USDT"
+                let existing = configBySymbol[symbol]
+                return PriceAlertRow(
+                    symbol: symbol,
+                    asset: asset,
+                    isEnabled: existing?.isEnabled ?? false,
+                    thresholdUSD: existing?.thresholdUSD ?? 100
+                )
+            }
+        } catch {
+            state.error = error.localizedDescription
+        }
+    }
+
+    private func requestNotificationPermission() async {
+        state.notificationsAuthorized = await notificationService.requestAuthorization()
+    }
+
+    private func setAlertEnabled(symbol: String, enabled: Bool) async {
+        do {
+            let config = try upsertConfig(symbol: symbol)
+            config.isEnabled = enabled
+            try modelContext.save()
+            updateRow(symbol: symbol) { $0.isEnabled = enabled }
+        } catch {
+            state.error = error.localizedDescription
+        }
+    }
+
+    private func setAlertThreshold(symbol: String, threshold: Double) async {
+        do {
+            let config = try upsertConfig(symbol: symbol)
+            config.thresholdUSD = threshold
+            try modelContext.save()
+            updateRow(symbol: symbol) { $0.thresholdUSD = threshold }
+        } catch {
+            state.error = error.localizedDescription
+        }
+    }
+
+    private func upsertConfig(symbol: String) throws -> PriceAlertConfig {
+        let target = symbol
+        let descriptor = FetchDescriptor<PriceAlertConfig>(
+            predicate: #Predicate { $0.symbol == target }
+        )
+        if let existing = try modelContext.fetch(descriptor).first {
+            return existing
+        }
+        let config = PriceAlertConfig(symbol: symbol)
+        modelContext.insert(config)
+        return config
+    }
+
+    private func updateRow(symbol: String, _ mutate: (inout PriceAlertRow) -> Void) {
+        guard let index = state.alertRows.firstIndex(where: { $0.symbol == symbol }) else { return }
+        var row = state.alertRows[index]
+        mutate(&row)
+        state.alertRows[index] = row
     }
 }

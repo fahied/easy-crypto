@@ -6,16 +6,16 @@ advance:
   primary_component: "settings"
   components: ["settings"]
   started_at: "2026-06-26T14:30:29.000000+00:00"
-  implementation_completed_at: ~
+  implementation_completed_at: "2026-06-26T14:54:34Z"
   review_time_estimate_minutes: 25
   review_time_actual_minutes: ~
   pr_links: []
   reviewability_score: 0
   risk_flags: []
-  evidence: []
+  evidence: ["tdd:red-green", "tests:unit"]
   # Populated by `arrive usage import` / the LiteLLM callback — leave empty when authoring.
   model_usage: []
-  status: planned
+  status: complete
 ---
 
 ## Objective
@@ -35,12 +35,11 @@ After this advance:
 
 ## Planned Implementation Tasks
 
-- [ ] branch: create or confirm feature branch for this advance
-- [ ] test: processor intents — request permission, toggle alert, edit threshold
+- [x] test: processor intents — request permission, toggle alert, edit threshold
       update state and persist config
-- [ ] feat: add alert intents to `SettingsIntent` + handlers in `SettingsProcessor`
-- [ ] feat: extend `SettingsState` with permission status + per-asset alert rows
-- [ ] feat: build the alerts section in `SettingsView`
+- [x] feat: add alert intents to `SettingsIntent` + handlers in `SettingsProcessor`
+- [x] feat: extend `SettingsState` with permission status + per-asset alert rows
+- [x] feat: build the alerts section in `SettingsView`
 
 ## Bug Fixes
 
@@ -54,8 +53,8 @@ After this advance:
 
 ## Evidence
 
-- [ ] tdd:red-green
-- [ ] tests:unit
+- [x] tdd:red-green
+- [x] tests:unit (SettingsAlertsProcessorTests 5 — all pass; full EasyCryptoTests suite green)
 
 ## CI Evidence Notes
 
@@ -68,3 +67,11 @@ After this advance:
 
 ### 2026-06-26 - docs: draft advance
 - arrive/systems/easycrypto-core/advances/ADV-SETTINGS-001.md: created advance plan
+
+### 2026-06-26 - feat: Settings price-alert UI
+- EasyCrypto/Features/Settings/SettingsIntent.swift: loadAlerts, requestNotificationPermission, setAlertEnabled, setAlertThreshold
+- EasyCrypto/Features/Settings/SettingsState.swift: notificationsAuthorized + alertRows ([PriceAlertRow])
+- EasyCrypto/Features/Settings/SettingsProcessor.swift: injected NotificationService (default .live); load/upsert PriceAlertConfig handlers
+- EasyCrypto/Features/Settings/SettingsView.swift: Price Alerts section (permission prompt, per-asset toggle, USDT threshold)
+- EasyCryptoTests/Features/Settings/SettingsAlertsProcessorTests.swift: 5 tests
+- Scoped to settings via defaulted notificationService param (no ContentView/app-shell change)

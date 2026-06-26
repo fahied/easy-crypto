@@ -20,6 +20,7 @@ struct SettingsView: View {
                 apiKeySection
                 connectionSection
                 syncStatsSection
+                alertsSection
                 dangerZone
             }
             .padding(.horizontal)
@@ -28,6 +29,7 @@ struct SettingsView: View {
         .scrollIndicators(.hidden)
         .task {
             await processor.handle(.loadCredentials)
+            await processor.handle(.loadAlerts)
         }
         .alert("Clear All Data", isPresented: Binding(
             get: { state.showClearConfirmation },
@@ -177,6 +179,71 @@ struct SettingsView: View {
             }
         }
         .glassCard()
+    }
+
+    // MARK: - Price Alerts
+
+    private var alertsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Price Alerts", systemImage: "bell.fill")
+                .font(.headline)
+
+            if !state.notificationsAuthorized {
+                Button {
+                    processor.send(.requestNotificationPermission)
+                } label: {
+                    Label("Enable Notifications", systemImage: "bell.badge")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .tint(Theme.accent)
+            }
+
+            if state.alertRows.isEmpty {
+                Text("Sync trades to configure per-coin profit alerts.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(state.alertRows) { row in
+                    alertRowView(row)
+                }
+            }
+        }
+        .glassCard()
+    }
+
+    @ViewBuilder
+    private func alertRowView(_ row: PriceAlertRow) -> some View {
+        VStack(spacing: 8) {
+            Toggle(isOn: Binding(
+                get: { row.isEnabled },
+                set: { processor.send(.setAlertEnabled(symbol: row.symbol, enabled: $0)) }
+            )) {
+                Text(row.asset)
+                    .font(.subheadline.weight(.medium))
+            }
+            .tint(Theme.accent)
+
+            if row.isEnabled {
+                HStack {
+                    Text("Notify on profit increase of")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    TextField("100", value: Binding(
+                        get: { row.thresholdUSD },
+                        set: { processor.send(.setAlertThreshold(symbol: row.symbol, threshold: $0)) }
+                    ), format: .number)
+                    .keyboardType(.decimalPad)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 70)
+                    .textFieldStyle(.roundedBorder)
+                    Text("USDT")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 
     // MARK: - Danger Zone
