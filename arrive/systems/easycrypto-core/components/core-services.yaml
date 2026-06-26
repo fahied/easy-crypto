@@ -1,0 +1,23 @@
+component:
+  id: core-services
+  name: "Core Services"
+  type: library
+  owners:
+    - team: easycrypto
+  stage: incubating
+
+selectors:
+  paths:
+    - "EasyCrypto/Core/Services/**"
+  build_modules: []
+  tags: []
+  contracts: []
+
+interfaces:
+  - "BinanceAPIClient"
+  - "FIFOCalculator"
+  - "KeychainService"
+  - "PriceService"
+  - "TradeImportService"
+
+invariants: []

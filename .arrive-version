@@ -1,0 +1,6 @@
+# .arrive-version - DO NOT EDIT
+# Tracks which ARRIVE template version was used to initialize this project
+template_version: "0.1.10"
+template_fingerprint: "415d9cf28e071bde"
+initialized_at: "2026-06-26T14:06:28.876688+00:00"
+cli_version: "0.1.6"

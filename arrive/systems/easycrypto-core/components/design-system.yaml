@@ -1,0 +1,23 @@
+component:
+  id: design-system
+  name: "Design System"
+  type: ui-area
+  owners:
+    - team: easycrypto
+  stage: incubating
+
+selectors:
+  paths:
+    - "EasyCrypto/DesignSystem/**"
+  build_modules: []
+  tags: []
+  contracts: []
+
+interfaces:
+  - "GlassCard"
+  - "MetricCard"
+  - "PnLLabel"
+  - "Theme"
+  - "TradeRowView"
+
+invariants: []

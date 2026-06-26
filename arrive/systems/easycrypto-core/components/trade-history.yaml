@@ -1,0 +1,22 @@
+component:
+  id: trade-history
+  name: "Trade History Feature"
+  type: ui-area
+  owners:
+    - team: easycrypto
+  stage: incubating
+
+selectors:
+  paths:
+    - "EasyCrypto/Features/TradeHistory/**"
+  build_modules: []
+  tags: []
+  contracts: []
+
+interfaces:
+  - "TradeHistoryIntent"
+  - "TradeHistoryState"
+  - "TradeHistoryProcessor"
+  - "TradeHistoryView"
+
+invariants: []

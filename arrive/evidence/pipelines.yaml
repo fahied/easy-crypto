@@ -1,0 +1,227 @@
+pipelines:
+  - technology: rust
+    checks:
+      # Component-scoped checks (module-level)
+      - id: unit_tests
+        order: 10
+        technology: rust
+        scope: module
+        command: "cargo test -p {module}"
+        system_advisory_ok: true
+        thresholds:
+          require_exit_code: 0
+
+      - id: unit_test_coverage
+        order: 20
+        technology: rust
+        scope: module
+        command: "cargo llvm-cov -p {module} --summary-only"
+        system_advisory_ok: true
+        thresholds:
+          min_line_coverage_pct: 70
+
+      - id: lint
+        order: 30
+        technology: rust
+        scope: module
+        command: "cargo clippy -p {module}"
+        system_advisory_ok: true
+        thresholds:
+          require_exit_code: 0
+
+      # Security scan is typically workspace-wide for Rust; we still record it.
+      - id: security_scan
+        order: 40
+        technology: rust
+        scope: workspace
+        command: "cargo audit --json"
+        system_advisory_ok: true
+        thresholds:
+          max_high: 0
+          max_critical: 0
+
+  - technology: rust-no-unit
+    checks:
+      - id: lint
+        order: 30
+        technology: rust
+        scope: module
+        command: "cargo clippy -p {module}"
+        system_advisory_ok: true
+        thresholds:
+          require_exit_code: 0
+
+      # Security scan is typically workspace-wide for Rust; we still record it.
+      - id: security_scan
+        order: 40
+        technology: rust
+        scope: workspace
+        command: "cargo audit --json"
+        system_advisory_ok: true
+        thresholds:
+          max_high: 0
+          max_critical: 0
+
+  - technology: typescript
+    checks:
+      # Component-scoped checks for Node/TypeScript packages (module is a package directory path).
+      - id: unit_tests
+        order: 10
+        technology: typescript
+        scope: module
+        command: "npm --prefix {module} test"
+        system_advisory_ok: true
+        thresholds:
+          require_exit_code: 0
+
+      - id: unit_test_coverage
+        order: 20
+        technology: typescript
+        scope: module
+        # Expect the underlying test runner to print a coverage summary that includes a Lines %.
+        command: "npm --prefix {module} test -- --coverage"
+        system_advisory_ok: true
+        thresholds:
+          min_line_coverage_pct: 70
+
+      - id: lint
+        order: 30
+        technology: typescript
+        scope: module
+        command: "npm --prefix {module} run lint"
+        system_advisory_ok: true
+        thresholds:
+          require_exit_code: 0
+
+      - id: security_scan
+        order: 40
+        technology: typescript
+        scope: module
+        command: "npm --prefix {module} audit --json"
+        system_advisory_ok: true
+        thresholds:
+          max_high: 0
+          max_critical: 0
+
+  - technology: node
+    checks:
+      - id: lint
+        order: 30
+        technology: node
+        scope: module
+        command: "npm --prefix {module} run lint"
+        system_advisory_ok: true
+        thresholds:
+          require_exit_code: 0
+
+      - id: security_scan
+        order: 40
+        technology: node
+        scope: module
+        command: "npm --prefix {module} audit --json"
+        system_advisory_ok: true
+        thresholds:
+          max_high: 0
+          max_critical: 0
+
+  - technology: react
+    checks:
+      - id: unit_tests
+        order: 10
+        technology: react
+        scope: module
+        command: "npm --prefix {module} test"
+        system_advisory_ok: true
+        thresholds:
+          require_exit_code: 0
+
+      - id: unit_test_coverage
+        order: 20
+        technology: react
+        scope: module
+        command: "npm --prefix {module} test -- --coverage"
+        system_advisory_ok: true
+        thresholds:
+          min_line_coverage_pct: 70
+
+      - id: lint
+        order: 30
+        technology: react
+        scope: module
+        command: "npm --prefix {module} run lint"
+        system_advisory_ok: true
+        thresholds:
+          require_exit_code: 0
+
+      - id: security_scan
+        order: 40
+        technology: react
+        scope: module
+        command: "npm --prefix {module} audit --json"
+        system_advisory_ok: true
+        thresholds:
+          max_high: 0
+          max_critical: 0
+
+  - technology: java
+    checks:
+      - id: unit_tests
+        order: 10
+        technology: java
+        scope: module
+        command: "sh -lc 'if [ -f \"{module}/pom.xml\" ]; then mvn -f \"{module}/pom.xml\" -q test; elif [ -f \"{module}/build.gradle\" ] || [ -f \"{module}/build.gradle.kts\" ]; then ./gradlew -p \"{module}\" test; else echo \"no pom.xml or build.gradle in {module}\" >&2; exit 1; fi'"
+        system_advisory_ok: true
+        thresholds:
+          require_exit_code: 0
+
+      - id: lint
+        order: 20
+        technology: java
+        scope: module
+        command: "sh -lc 'if [ -f \"{module}/pom.xml\" ]; then mvn -f \"{module}/pom.xml\" -q checkstyle:check; elif [ -f \"{module}/build.gradle\" ] || [ -f \"{module}/build.gradle.kts\" ]; then ./gradlew -p \"{module}\" checkstyleMain; else echo \"no pom.xml or build.gradle in {module}\" >&2; exit 1; fi'"
+        system_advisory_ok: true
+        thresholds:
+          require_exit_code: 0
+
+      - id: security_scan
+        order: 30
+        technology: java
+        scope: module
+        command: "sh -lc 'tmpd=$(mktemp -d); dependency-check --format JSON --scan \"{module}\" --out \"$tmpd\" >/dev/null && cat \"$tmpd\"/dependency-check-report.json'"
+        system_advisory_ok: true
+        thresholds:
+          max_high: 0
+          max_critical: 0
+
+  - technology: python
+    checks:
+      - id: unit_tests
+        order: 10
+        technology: python
+        scope: module
+        command: "sh -lc 'if [ -f \"{module}/pyproject.toml\" ] || [ -f \"{module}/pytest.ini\" ]; then python -m pytest \"{module}\"; else python -m pytest; fi'"
+        system_advisory_ok: true
+        thresholds:
+          require_exit_code: 0
+
+      - id: lint
+        order: 20
+        technology: python
+        scope: module
+        command: "ruff check {module}"
+        system_advisory_ok: true
+        thresholds:
+          require_exit_code: 0
+
+      - id: security_scan
+        order: 30
+        technology: python
+        scope: module
+        command: "sh -lc 'if [ -f \"{module}/requirements.txt\" ]; then pip-audit -r \"{module}/requirements.txt\" --format json; elif [ -f \"{module}/pyproject.toml\" ]; then pip-audit --path \"{module}\" --format json; else pip-audit --format json; fi'"
+        system_advisory_ok: true
+        thresholds:
+          max_high: 0
+          max_critical: 0
+
+  - technology: manual
+    checks: []

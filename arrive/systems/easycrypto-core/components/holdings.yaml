@@ -1,0 +1,22 @@
+component:
+  id: holdings
+  name: "Holdings Feature"
+  type: ui-area
+  owners:
+    - team: easycrypto
+  stage: incubating
+
+selectors:
+  paths:
+    - "EasyCrypto/Features/Holdings/**"
+  build_modules: []
+  tags: []
+  contracts: []
+
+interfaces:
+  - "HoldingsIntent"
+  - "HoldingsState"
+  - "HoldingsProcessor"
+  - "HoldingsView"
+
+invariants: []

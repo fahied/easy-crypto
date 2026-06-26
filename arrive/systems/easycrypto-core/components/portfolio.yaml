@@ -1,0 +1,22 @@
+component:
+  id: portfolio
+  name: "Portfolio Feature"
+  type: ui-area
+  owners:
+    - team: easycrypto
+  stage: incubating
+
+selectors:
+  paths:
+    - "EasyCrypto/Features/Portfolio/**"
+  build_modules: []
+  tags: []
+  contracts: []
+
+interfaces:
+  - "PortfolioIntent"
+  - "PortfolioState"
+  - "PortfolioProcessor"
+  - "PortfolioView"
+
+invariants: []

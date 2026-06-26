@@ -1,0 +1,93 @@
+# ARRIVE Registry - Repo-wide defaults and shared configuration
+registry:
+  repo_id: easycrypto
+  name: "EasyCrypto"
+  description: "Change Intelligence layer for capturing, interpreting, and governing outcomes"
+
+# Optional org placement for fleet/portfolio rollups (ARRIVE Adoption Intelligence,
+# TD-INSIGHT-009). Aggregate / team-level only — never per-developer. All fields
+# optional; repos that omit this group under "Unassigned". `arrive init` captures
+# these interactively or via --portfolio / --pillar / --team (blanks omitted).
+# They can also be set via the insight active-repo registry override.
+# org:
+#   portfolio: "<portfolio name>"
+#   pillar: "<pillar name>"
+#   team: "<team name>"
+
+defaults:
+  default_branch: main
+  # Advance ID format: ADV-<PRIMARY_COMPONENT>-<SEQ:3>
+  # Example: ADV-STATUS-001, ADV-AUTH-002, ADV-REVIEWABILITY-003
+  # The primary component identifies what was mainly changed
+  advance_id_format: "ADV-{COMPONENT}-{SEQ:3}"
+  
+vocabulary:
+  stages:
+    - incubating   # Early stage, flexible, learning/rapid iteration
+    - candidate    # Stabilized enough for normal governance
+    - resident     # High trust + high scrutiny; stricter gates
+
+  component_types:
+    - service
+    - library
+    - ui-area
+    - infra
+    - data-contract
+    - crosscutting
+
+  risk_flags:
+    - resident_touched
+    - migration
+    - auth
+    - concurrency
+    - caching
+    - public_api
+    - new_dependency
+
+  evidence_types:
+    - ci:passed
+    - tests:unit
+    - tests:integration
+    - tests:e2e
+    - review:owner
+    - docs:updated
+    - tdd:red-green        # Tests written first, then implementation
+    - tidy:preparatory     # Tidying commits preceded feature work
+
+  commit_prefixes:
+    - tidy     # Preparatory refactoring (no behavior change)
+    - test     # New or modified tests
+    - feat     # New feature implementation
+    - fix      # Bug fix implementation
+    - docs     # Documentation only
+    - chore    # Build, CI, tooling changes
+
+  # File annotation format for tagging scattered files
+  annotation:
+    pattern: "@arrive component:"  # Pattern to search for
+    scan_lines: 50                 # Scan first N lines of each file
+    extensions:                    # File extensions to scan for annotations
+      - .rs
+      - .ts
+      - .tsx
+      - .js
+      - .jsx
+      - .py
+      - .go
+      - .java
+      - .kt
+      - .swift
+      - .yaml
+      - .yml
+      - .toml
+
+systems:
+  - easycrypto-core
+
+# context_repositories:
+#   - id: sibling-lib
+#     path: ../sibling-lib
+#     role: library          # library | framework | app | reference
+#     description: "Short description of what this repo provides"
+#     relevance:
+#       - "When to use this repo and what to look for"

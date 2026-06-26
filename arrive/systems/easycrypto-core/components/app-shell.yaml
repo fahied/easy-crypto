@@ -1,0 +1,21 @@
+component:
+  id: app-shell
+  name: "App Shell"
+  type: ui-area
+  owners:
+    - team: easycrypto
+  stage: incubating
+
+selectors:
+  paths:
+    - "EasyCrypto/EasyCryptoApp.swift"
+    - "EasyCrypto/ContentView.swift"
+  build_modules: []
+  tags: []
+  contracts: []
+
+interfaces:
+  - "EasyCryptoApp"
+  - "ContentView"
+
+invariants: []

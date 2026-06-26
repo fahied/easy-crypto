@@ -1,0 +1,54 @@
+---
+description: "ARRIVE core governance rules - always applied"
+alwaysApply: true
+---
+
+# ARRIVE Core
+
+Outcome-first; `/arrive/` is authoritative. Do not bypass governance.
+
+## Authoritative Metadata
+
+- Treat `/arrive/` as governance source; understand impact before edits
+- Cross-system work: check `docs/tech-direction/`; add/reference tech directions for major decisions
+
+## Before Implementing or Editing
+
+1. Impacted **system(s)** — `system.yaml` roots
+2. Impacted **component(s)** — selectors
+3. **Resident** touched? → `/arrive-resident-check` (gate detail lives in that command)
+
+## AI Template-First Authoring
+
+`arrive template render --kind <system|component|advance|implementation-plan> --json` — use CLI `content` as base; do not invent artifact structure.
+
+## Optional Implementation Plan
+
+When `arrive/implementation-plan.yaml` exists or plan workflow is on: `arrive plan show` / `arrive plan check`; keep plan + advances aligned; `.arrive/work-context.json` for transient focus.
+
+## Reviewability Budget
+
+- **Green** (≤30) · **Yellow** (31–60) · **Red** (>60, split unless documented)
+- One reviewable Advance beats one mega-diff; `arrive score` — detail in `arrive-reviewability.mdc`
+- **tidy → test → implement** — detail in `arrive-dev-practices.mdc`
+
+## CI Guidance
+
+PR/MR checks required even if pipeline YAML disabled; run `arrive pr check --strict --json` and `arrive evidence record --advance <ADV-ID> --status success` externally when needed.
+
+## CFU
+
+Every advance: keep `## Check for Understanding` aligned on substantive updates — triggers and CLI in `arrive-advance-writing.mdc`.
+
+## Transparency on Large Changes
+
+Before large edits: diff footprint, ~files/LOC, impacted components.
+
+## Scoped rule map
+
+| Topic | Rule |
+|-------|------|
+| Tidy + TDD | `arrive-dev-practices.mdc` |
+| Reviewability | `arrive-reviewability.mdc` |
+| Advances / CFU | `arrive-advance-writing.mdc` |
+| YAML artifacts | `arrive-artifacts.mdc` |

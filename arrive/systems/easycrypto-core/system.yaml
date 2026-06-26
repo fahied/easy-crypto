@@ -1,0 +1,34 @@
+system:
+  id: easycrypto-core
+  name: "EasyCrypto Core"
+  description: "Binance Spot portfolio tracker for iOS 26+ (SwiftUI, SwiftData, MVI)"
+  roots:
+    - "EasyCrypto/**"
+    - "EasyCryptoTests/**"
+    - "EasyCryptoUITests/**"
+  default_branch: main
+
+policies:
+  advance_required_on_pr: true
+  resident_gates:
+    require_owner_approval: true
+    require_invariant_impact_statement: true
+    require_rollback_plan: true
+    require_evidence_links: true
+
+reviewability:
+  thresholds:
+    green: 30
+    yellow: 60
+  scoring_rules_version: 1
+
+# Optional promotion defaults for incubating -> candidate.
+# Component-level `promotion.candidate.*` overrides these values.
+promotion:
+  candidate:
+    required_check_ids:
+      - unit_tests
+      - unit_test_coverage
+      - lint
+      - security_scan
+    require_ci_artifact: false

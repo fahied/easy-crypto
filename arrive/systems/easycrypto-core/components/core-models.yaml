@@ -1,0 +1,26 @@
+component:
+  id: core-models
+  name: "Core Models & Architecture"
+  type: data-contract
+  owners:
+    - team: easycrypto
+  stage: incubating
+
+selectors:
+  paths:
+    - "EasyCrypto/Core/Models/**"
+    - "EasyCrypto/Core/Architecture/**"
+  build_modules: []
+  tags: []
+  contracts: []
+
+interfaces:
+  - "Trade"
+  - "Holding"
+  - "PortfolioSummary"
+  - "DailyPnL"
+  - "Kline"
+  - "SyncMetadata"
+  - "MVI"
+
+invariants: []

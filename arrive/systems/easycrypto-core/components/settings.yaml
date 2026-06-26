@@ -1,0 +1,22 @@
+component:
+  id: settings
+  name: "Settings Feature"
+  type: ui-area
+  owners:
+    - team: easycrypto
+  stage: incubating
+
+selectors:
+  paths:
+    - "EasyCrypto/Features/Settings/**"
+  build_modules: []
+  tags: []
+  contracts: []
+
+interfaces:
+  - "SettingsIntent"
+  - "SettingsState"
+  - "SettingsProcessor"
+  - "SettingsView"
+
+invariants: []
