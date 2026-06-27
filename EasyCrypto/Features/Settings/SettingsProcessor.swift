@@ -42,6 +42,8 @@ class SettingsProcessor: Processor {
             await loadCredentials()
         case .loadAlerts:
             await loadAlerts()
+        case .loadNotificationLog:
+            await loadNotificationLog()
         case .requestNotificationPermission:
             await requestNotificationPermission()
         case .setAlertEnabled(let symbol, let enabled):
@@ -163,6 +165,30 @@ class SettingsProcessor: Processor {
 
     private func requestNotificationPermission() async {
         state.notificationsAuthorized = await notificationService.requestAuthorization()
+    }
+
+    private func loadNotificationLog() async {
+        do {
+            let entries = try modelContext.fetch(
+                FetchDescriptor<NotificationLogEntry>(
+                    sortBy: [SortDescriptor(\.firedAt, order: .reverse)]
+                )
+            )
+            state.notificationLog = entries.map { entry in
+                NotificationLogRow(
+                    id: entry.id,
+                    symbol: entry.symbol,
+                    asset: entry.asset,
+                    title: entry.title,
+                    body: entry.body,
+                    direction: entry.direction,
+                    value: entry.value,
+                    firedAt: entry.firedAt
+                )
+            }
+        } catch {
+            state.error = error.localizedDescription
+        }
     }
 
     private func setAlertEnabled(symbol: String, enabled: Bool) async {

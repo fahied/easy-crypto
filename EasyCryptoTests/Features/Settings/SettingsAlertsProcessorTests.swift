@@ -15,7 +15,7 @@ struct SettingsAlertsProcessorTests {
     private func makeContainer() throws -> ModelContainer {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         return try ModelContainer(
-            for: Trade.self, SyncMetadata.self, PriceAlertConfig.self,
+            for: Trade.self, SyncMetadata.self, PriceAlertConfig.self, NotificationLogEntry.self,
             configurations: config
         )
     }
@@ -131,5 +131,29 @@ struct SettingsAlertsProcessorTests {
         await processor.handle(.requestNotificationPermission)
 
         #expect(processor.state.notificationsAuthorized == false)
+    }
+
+    @Test("When loading the notification log, then rows are returned newest-first")
+    func loadNotificationLogSortsNewestFirst() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let older = Date(timeIntervalSince1970: 1_700_000_000)
+        let newer = Date(timeIntervalSince1970: 1_710_000_000)
+        context.insert(NotificationLogEntry(
+            symbol: "BTCUSDT", asset: "BTC", title: "BTC profit up",
+            body: "old", direction: "gain", value: 100, firedAt: older
+        ))
+        context.insert(NotificationLogEntry(
+            symbol: "ETHUSDT", asset: "ETH", title: "ETH price down 6.0%",
+            body: "new", direction: "priceDown", value: -50, firedAt: newer
+        ))
+        try context.save()
+
+        let processor = makeProcessor(container: container)
+        await processor.handle(.loadNotificationLog)
+
+        #expect(processor.state.notificationLog.count == 2)
+        #expect(processor.state.notificationLog.first?.asset == "ETH")
+        #expect(processor.state.notificationLog.last?.asset == "BTC")
     }
 }

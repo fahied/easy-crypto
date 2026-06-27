@@ -73,7 +73,30 @@ enum PriceAlertRefresher {
             case .priceUp, .priceDown, .priceReference:
                 config.referencePrice = alert.newBaseline
             }
+
+            // Log every delivered notification so it can be browsed from Settings.
+            // Silent outcomes (e.g. reference seeding) carry no delivered alert.
+            if let delivered = alert.deliveredAlert {
+                modelContext.insert(NotificationLogEntry(
+                    symbol: alert.symbol,
+                    asset: alert.asset,
+                    title: delivered.title,
+                    body: delivered.body,
+                    direction: directionLabel(alert.direction),
+                    value: alert.currentProfit
+                ))
+            }
         }
         try modelContext.save()
+    }
+
+    private static func directionLabel(_ direction: AlertDirection) -> String {
+        switch direction {
+        case .gain: "gain"
+        case .loss: "loss"
+        case .priceUp: "priceUp"
+        case .priceDown: "priceDown"
+        case .priceReference: "reference"
+        }
     }
 }

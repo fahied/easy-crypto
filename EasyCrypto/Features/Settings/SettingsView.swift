@@ -21,6 +21,7 @@ struct SettingsView: View {
                 connectionSection
                 syncStatsSection
                 alertsSection
+                notificationLogSection
                 dangerZone
             }
             .padding(.horizontal)
@@ -262,6 +263,26 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Notification Log
+
+    private var notificationLogSection: some View {
+        NavigationLink {
+            NotificationLogView(processor: processor)
+        } label: {
+            HStack {
+                Label("Notification Log", systemImage: "bell.badge.fill")
+                    .font(.headline)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .glassCard()
     }
 
     // MARK: - Danger Zone

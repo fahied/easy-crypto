@@ -15,6 +15,18 @@ struct PriceAlertRow: Identifiable, Sendable, Equatable {
     var percentThreshold: Double
 }
 
+/// One fired-notification record shown in the Settings notification log.
+struct NotificationLogRow: Identifiable, Sendable, Equatable {
+    let id: UUID
+    let symbol: String      // e.g. "BTCUSDT"
+    let asset: String       // e.g. "BTC"
+    let title: String
+    let body: String
+    let direction: String   // "gain" | "loss" | "priceUp" | "priceDown"
+    let value: Double       // unrealized P&L (USDT) at the time the alert fired
+    let firedAt: Date
+}
+
 struct SettingsState: ViewState {
     var hasApiKey: Bool = false
     var connectionStatus: ConnectionStatus = .idle
@@ -26,4 +38,5 @@ struct SettingsState: ViewState {
     var dataCleared: Bool = false
     var notificationsAuthorized: Bool = false
     var alertRows: [PriceAlertRow] = []
+    var notificationLog: [NotificationLogRow] = []
 }

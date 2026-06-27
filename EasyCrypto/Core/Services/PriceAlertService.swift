@@ -39,6 +39,9 @@ nonisolated struct FiredAlert: Sendable, Equatable {
     let direction: AlertDirection
     let currentProfit: Double
     let newBaseline: Double
+    /// The notification delivered to the user, or `nil` for silent outcomes
+    /// (e.g. `.priceReference` seeding). Used to log exactly what the user saw.
+    let deliveredAlert: LocalAlert?
 }
 
 // MARK: - Service (struct-with-closures pattern)
@@ -87,32 +90,36 @@ extension PriceAlertService {
                     )
 
                     if profit - config.lastNotifiedProfit >= config.thresholdUSD {
-                        await notificationService.scheduleAlert(LocalAlert(
+                        let alert = LocalAlert(
                             id: "price-alert-gain-\(config.symbol)",
                             title: "\(config.asset) profit up",
                             body: "\(config.asset) unrealized P&L is now \(Int(profit.rounded())) USDT."
-                        ))
+                        )
+                        await notificationService.scheduleAlert(alert)
                         fired.append(FiredAlert(
                             symbol: config.symbol,
                             asset: config.asset,
                             direction: .gain,
                             currentProfit: profit,
-                            newBaseline: profit
+                            newBaseline: profit,
+                            deliveredAlert: alert
                         ))
                     }
 
                     if config.lastNotifiedLoss - profit >= config.thresholdUSD {
-                        await notificationService.scheduleAlert(LocalAlert(
+                        let alert = LocalAlert(
                             id: "price-alert-loss-\(config.symbol)",
                             title: "\(config.asset) profit down",
                             body: "\(config.asset) unrealized P&L is now \(Int(profit.rounded())) USDT."
-                        ))
+                        )
+                        await notificationService.scheduleAlert(alert)
                         fired.append(FiredAlert(
                             symbol: config.symbol,
                             asset: config.asset,
                             direction: .loss,
                             currentProfit: profit,
-                            newBaseline: profit
+                            newBaseline: profit,
+                            deliveredAlert: alert
                         ))
                     }
 
@@ -125,24 +132,27 @@ extension PriceAlertService {
                                 asset: config.asset,
                                 direction: .priceReference,
                                 currentProfit: profit,
-                                newBaseline: price
+                                newBaseline: price,
+                                deliveredAlert: nil
                             ))
                         } else {
                             let changePercent = (price - config.referencePrice) / config.referencePrice * 100
                             if abs(changePercent) >= config.percentThreshold {
                                 let direction: AlertDirection = changePercent >= 0 ? .priceUp : .priceDown
                                 let arrow = changePercent >= 0 ? "up" : "down"
-                                await notificationService.scheduleAlert(LocalAlert(
+                                let alert = LocalAlert(
                                     id: "price-alert-pct-\(config.symbol)",
                                     title: "\(config.asset) price \(arrow) \(String(format: "%.1f", abs(changePercent)))%",
                                     body: "\(config.asset) price is now \(Int(price.rounded())) USDT."
-                                ))
+                                )
+                                await notificationService.scheduleAlert(alert)
                                 fired.append(FiredAlert(
                                     symbol: config.symbol,
                                     asset: config.asset,
                                     direction: direction,
                                     currentProfit: profit,
-                                    newBaseline: price
+                                    newBaseline: price,
+                                    deliveredAlert: alert
                                 ))
                             }
                         }

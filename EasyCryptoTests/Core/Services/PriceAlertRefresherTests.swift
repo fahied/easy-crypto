@@ -15,7 +15,7 @@ struct PriceAlertRefresherTests {
     private func makeContainer() throws -> ModelContainer {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         return try ModelContainer(
-            for: Trade.self, SyncMetadata.self, PriceAlertConfig.self,
+            for: Trade.self, SyncMetadata.self, PriceAlertConfig.self, NotificationLogEntry.self,
             configurations: config
         )
     }
@@ -118,5 +118,48 @@ struct PriceAlertRefresherTests {
 
         let config = try #require(try context.fetch(FetchDescriptor<PriceAlertConfig>()).first)
         #expect(config.lastNotifiedProfit == 9950)
+    }
+
+    @Test("When an alert fires, then a notification log entry is written for it")
+    func firingWritesNotificationLogEntry() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        insertBTCBuy(context, price: 50000, quantity: 1) // @60000 → profit 10000
+        context.insert(PriceAlertConfig(symbol: "BTCUSDT", isEnabled: true, thresholdUSD: 100, lastNotifiedProfit: 0))
+        try context.save()
+
+        try await PriceAlertRefresher.run(modelContext: context, alertService: alertService(price: 60000))
+
+        let entries = try context.fetch(FetchDescriptor<NotificationLogEntry>())
+        #expect(entries.count == 1)
+        let entry = try #require(entries.first)
+        #expect(entry.symbol == "BTCUSDT")
+        #expect(entry.asset == "BTC")
+        #expect(entry.direction == "gain")
+        #expect(entry.value == 10000)
+        #expect(entry.title == "BTC profit up")
+    }
+
+    @Test("When only the reference price is seeded silently, then no notification log entry is written")
+    func silentSeedWritesNoLogEntry() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        // No trades (profit 0) and a large USD threshold so gain/loss never fire;
+        // referencePrice 0 triggers only the silent percent-reference seeding.
+        context.insert(PriceAlertConfig(
+            symbol: "BTCUSDT",
+            isEnabled: true,
+            thresholdUSD: 100,
+            percentThreshold: 5,
+            referencePrice: 0
+        ))
+        try context.save()
+
+        try await PriceAlertRefresher.run(modelContext: context, alertService: alertService(price: 60000))
+
+        let config = try #require(try context.fetch(FetchDescriptor<PriceAlertConfig>()).first)
+        #expect(config.referencePrice == 60000) // reference was seeded
+        let entries = try context.fetch(FetchDescriptor<NotificationLogEntry>())
+        #expect(entries.isEmpty) // but no notification was delivered, so nothing logged
     }
 }

@@ -22,7 +22,7 @@ struct EasyCryptoApp: App {
 
     init() {
         let container = try! ModelContainer(
-            for: Trade.self, SyncMetadata.self, PriceAlertConfig.self
+            for: Trade.self, SyncMetadata.self, PriceAlertConfig.self, NotificationLogEntry.self
         )
         self.modelContainer = container
 

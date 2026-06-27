@@ -281,6 +281,37 @@ struct PriceAlertServiceTests {
 
         #expect(fired.isEmpty)
     }
+
+    @Test("When a gain alert fires, then it carries the delivered notification copy")
+    func gainCarriesDeliveredAlert() async throws {
+        let service = PriceAlertService.live(
+            priceService: priceService(["BTCUSDT": 60000]),
+            fifoCalculator: .live,
+            notificationService: .noop
+        )
+        let cfg = config(baseline: 9800, trades: [buy(1, at: 50000, asset: "BTC")])
+
+        let fired = try await service.evaluate([cfg])
+
+        let delivered = try #require(fired.first?.deliveredAlert)
+        #expect(delivered.title == "BTC profit up")
+        #expect(delivered.body == "BTC unrealized P&L is now 10000 USDT.")
+    }
+
+    @Test("When the reference price is seeded silently, then no notification copy is carried")
+    func silentSeedHasNoDeliveredAlert() async throws {
+        let service = PriceAlertService.live(
+            priceService: priceService(["BTCUSDT": 60000]),
+            fifoCalculator: .live,
+            notificationService: .noop
+        )
+        let cfg = config(percentThreshold: 5, referencePrice: 0, trades: [])
+
+        let fired = try await service.evaluate([cfg])
+
+        #expect(fired.first?.direction == .priceReference)
+        #expect(fired.first?.deliveredAlert == nil)
+    }
 }
 
 private actor AlertRecorder {
