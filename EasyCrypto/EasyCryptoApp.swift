@@ -19,10 +19,12 @@ struct EasyCryptoApp: App {
     private let fifoCalculator: FIFOCalculator
     private let notificationService: NotificationService
     private let priceAlertService: PriceAlertService
+    private let candleAlertService: CandleAlertService
 
     init() {
         let container = try! ModelContainer(
-            for: Trade.self, SyncMetadata.self, PriceAlertConfig.self, NotificationLogEntry.self
+            for: Trade.self, SyncMetadata.self, PriceAlertConfig.self, NotificationLogEntry.self,
+            CandleAlertState.self
         )
         self.modelContainer = container
 
@@ -45,8 +47,16 @@ struct EasyCryptoApp: App {
             fifoCalculator: fifo,
             notificationService: notifications
         )
+        self.candleAlertService = .live(
+            fetchKlines: client.fetchKlines,
+            notificationService: notifications
+        )
 
-        Self.registerBackgroundRefresh(container: container, service: self.priceAlertService)
+        Self.registerBackgroundRefresh(
+            container: container,
+            service: self.priceAlertService,
+            candleService: self.candleAlertService
+        )
     }
 
     var body: some Scene {
@@ -72,14 +82,15 @@ struct EasyCryptoApp: App {
 
     private static func registerBackgroundRefresh(
         container: ModelContainer,
-        service: PriceAlertService
+        service: PriceAlertService,
+        candleService: CandleAlertService
     ) {
         BGTaskScheduler.shared.register(
             forTaskWithIdentifier: PriceAlertRefresher.taskIdentifier,
             using: nil
         ) { task in
             guard let refreshTask = task as? BGAppRefreshTask else { return }
-            handle(task: refreshTask, container: container, service: service)
+            handle(task: refreshTask, container: container, service: service, candleService: candleService)
         }
     }
 
@@ -94,16 +105,22 @@ struct EasyCryptoApp: App {
     private static func handle(
         task: BGAppRefreshTask,
         container: ModelContainer,
-        service: PriceAlertService
+        service: PriceAlertService,
+        candleService: CandleAlertService
     ) {
         // Always queue the next refresh so the chain continues.
         scheduleAppRefresh()
 
         let work = Task { @MainActor in
             do {
+                let context = ModelContext(container)
                 try await PriceAlertRefresher.run(
-                    modelContext: ModelContext(container),
+                    modelContext: context,
                     alertService: service
+                )
+                try await CandleAlertRefresher.run(
+                    modelContext: context,
+                    candleService: candleService
                 )
                 task.setTaskCompleted(success: true)
             } catch {

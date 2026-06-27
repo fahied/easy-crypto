@@ -72,6 +72,8 @@ enum PriceAlertRefresher {
                 config.lastNotifiedLoss = alert.newBaseline
             case .priceUp, .priceDown, .priceReference:
                 config.referencePrice = alert.newBaseline
+            case .candleDrop:
+                break // Produced by CandleAlertService, not this path.
             }
 
             // Log every delivered notification so it can be browsed from Settings.
@@ -97,6 +99,7 @@ enum PriceAlertRefresher {
         case .priceUp: "priceUp"
         case .priceDown: "priceDown"
         case .priceReference: "reference"
+        case .candleDrop: "candleDrop"
         }
     }
 }

@@ -23,6 +23,7 @@ final class PriceAlertConfig {
     var lastNotifiedLoss: Double = 0
     var percentThreshold: Double = 5
     var referencePrice: Double = 0
+    var lastCandleDropOpenTime: Int64 = 0
 
     init(
         symbol: String,
@@ -31,7 +32,8 @@ final class PriceAlertConfig {
         lastNotifiedProfit: Double = 0,
         lastNotifiedLoss: Double = 0,
         percentThreshold: Double = 5,
-        referencePrice: Double = 0
+        referencePrice: Double = 0,
+        lastCandleDropOpenTime: Int64 = 0
     ) {
         self.symbol = symbol
         self.isEnabled = isEnabled
@@ -40,5 +42,6 @@ final class PriceAlertConfig {
         self.lastNotifiedLoss = lastNotifiedLoss
         self.percentThreshold = percentThreshold
         self.referencePrice = referencePrice
+        self.lastCandleDropOpenTime = lastCandleDropOpenTime
     }
 }

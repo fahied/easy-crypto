@@ -116,7 +116,7 @@ struct NotificationLogDetailView: View {
                     Divider()
                     detailRow("Type", NotificationLogFormat.label(entry.direction))
                     Divider()
-                    detailRow("Unrealized P&L", "\(Int(entry.value.rounded())) USDT")
+                    detailRow(NotificationLogFormat.valueLabel(entry.direction), "\(Int(entry.value.rounded())) USDT")
                     Divider()
                     detailRow("Fired", entry.firedAt.formatted(date: .abbreviated, time: .shortened))
                 }
@@ -152,6 +152,7 @@ private enum NotificationLogFormat {
         case "loss": "arrow.down.circle.fill"
         case "priceUp": "chart.line.uptrend.xyaxis"
         case "priceDown": "chart.line.downtrend.xyaxis"
+        case "candleDrop": "chart.bar.xaxis.ascending.badge.clock"
         default: "bell.fill"
         }
     }
@@ -159,7 +160,7 @@ private enum NotificationLogFormat {
     static func tint(_ direction: String) -> Color {
         switch direction {
         case "gain", "priceUp": Theme.profit
-        case "loss", "priceDown": Theme.loss
+        case "loss", "priceDown", "candleDrop": Theme.loss
         default: Theme.accent
         }
     }
@@ -170,7 +171,17 @@ private enum NotificationLogFormat {
         case "loss": "Profit down"
         case "priceUp": "Price up"
         case "priceDown": "Price down"
+        case "candleDrop": "Candle drop"
         default: direction
+        }
+    }
+
+    /// Label for the numeric `value` field, which means P&L for the profit alerts
+    /// and a price for the price/candle alerts.
+    static func valueLabel(_ direction: String) -> String {
+        switch direction {
+        case "gain", "loss": "Unrealized P&L"
+        default: "Price"
         }
     }
 }

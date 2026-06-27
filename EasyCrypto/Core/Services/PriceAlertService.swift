@@ -16,6 +16,8 @@ nonisolated enum AlertDirection: Sendable, Equatable {
     case priceDown
     /// Silent: initialize `referencePrice` to the current price without notifying.
     case priceReference
+    /// Two consecutive falling 15m candles (see `CandleAlertService`).
+    case candleDrop
 }
 
 /// One asset's alert configuration plus the trades needed to value it.
