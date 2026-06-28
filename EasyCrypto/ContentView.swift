@@ -75,6 +75,19 @@ struct ContentView: View {
                 }
             }
 
+            Tab("Insights", systemImage: "brain.head.profile", value: .insights) {
+                NavigationStack {
+                    InsightsView(
+                        processor: InsightsProcessor(
+                            modelContainer: modelContainer,
+                            summarizer: TradePatternSummarizer(fifo: fifoCalculator),
+                            engine: .live
+                        )
+                    )
+                    .navigationTitle("Insights")
+                }
+            }
+
             Tab("Settings", systemImage: "gearshape.fill", value: .settings) {
                 NavigationStack {
                     SettingsView(
@@ -146,7 +159,7 @@ struct ContentView: View {
 // MARK: - Tab Enum
 
 enum AppTab: Hashable {
-    case portfolio, holdings, history, settings
+    case portfolio, holdings, history, insights, settings
 }
 
 // MARK: - Holdings Tab (with navigation to CoinDetail)

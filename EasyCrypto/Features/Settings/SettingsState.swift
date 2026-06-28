@@ -39,4 +39,5 @@ struct SettingsState: ViewState {
     var notificationsAuthorized: Bool = false
     var alertRows: [PriceAlertRow] = []
     var notificationLog: [NotificationLogRow] = []
+    var aiInsightsEnabled: Bool = true
 }

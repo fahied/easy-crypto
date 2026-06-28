@@ -21,6 +21,7 @@ struct SettingsView: View {
                 connectionSection
                 syncStatsSection
                 alertsSection
+                insightsSection
                 notificationLogSection
                 dangerZone
             }
@@ -31,6 +32,7 @@ struct SettingsView: View {
         .task {
             await processor.handle(.loadCredentials)
             await processor.handle(.loadAlerts)
+            await processor.handle(.loadInsightsSettings)
         }
         .alert("Clear All Data", isPresented: Binding(
             get: { state.showClearConfirmation },
@@ -178,6 +180,29 @@ struct SettingsView: View {
                     value: "\(state.syncedSymbolCount)"
                 )
             }
+        }
+        .glassCard()
+    }
+
+    // MARK: - AI Insights
+
+    private var insightsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("AI Insights", systemImage: "brain.head.profile")
+                .font(.headline)
+
+            Toggle(isOn: Binding(
+                get: { state.aiInsightsEnabled },
+                set: { processor.send(.setInsightsEnabled($0)) }
+            )) {
+                Text("On-device insights")
+                    .font(.subheadline.weight(.medium))
+            }
+            .tint(Theme.accent)
+
+            Text("Insights are generated on your device using Apple Intelligence and never leave your iPhone.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .glassCard()
     }

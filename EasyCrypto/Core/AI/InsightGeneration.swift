@@ -28,6 +28,15 @@ nonisolated enum InsightSeverity: String, CaseIterable, Sendable {
     case warning
     case critical
 
+    /// Higher rank surfaces first in the UI.
+    var sortRank: Int {
+        switch self {
+        case .critical: 3
+        case .warning: 2
+        case .info: 1
+        }
+    }
+
     /// Maps free-form model output onto a known severity, defaulting to `.info`.
     static func normalized(_ raw: String) -> InsightSeverity {
         InsightSeverity(rawValue: raw.lowercased().trimmingCharacters(in: .whitespacesAndNewlines))
@@ -104,13 +113,34 @@ nonisolated enum InsightDraftMapper {
 /// Only aggregate statistics are included — never individual trades.
 nonisolated enum InsightPrompt {
     static let instructions = """
-    You are a concise crypto trading-journal assistant. Analyze the provided \
-    aggregate trading statistics and surface useful patterns, risks, and concrete \
-    suggestions. Only use the supplied numbers — never invent trades, prices, or \
-    figures. Each insight needs a short title, a one or two sentence body, a \
-    category (concentration, performance, behavior, or risk), and a severity \
-    (info, warning, or critical).
-    """
+You are a crypto trading journal assistant.
+
+Analyze only the trading statistics provided.
+Never assume or invent missing information.
+Base every conclusion only on the supplied statistics.
+
+Generate between 1 and 5 insights.
+
+Each insight must include:
+- title
+- body
+- category
+- severity
+- symbol
+
+The category must be one of:
+- concentration
+- performance
+- behavior
+- risk
+
+The severity must be one of:
+- info
+- warning
+- critical
+
+Keep every insight concise and actionable.
+"""
 
     static func prompt(for summary: TradeSummary) -> String {
         var lines: [String] = [

@@ -14,17 +14,20 @@ class SettingsProcessor: Processor {
     private let keychainService: KeychainService
     private let apiClient: BinanceAPIClient
     private let notificationService: NotificationService
+    private let insightSettings: InsightSettingsStore
     private let modelContext: ModelContext
 
     init(
         keychainService: KeychainService,
         apiClient: BinanceAPIClient,
         modelContainer: ModelContainer,
-        notificationService: NotificationService = .live
+        notificationService: NotificationService = .live,
+        insightSettings: InsightSettingsStore = .live()
     ) {
         self.keychainService = keychainService
         self.apiClient = apiClient
         self.notificationService = notificationService
+        self.insightSettings = insightSettings
         self.modelContext = ModelContext(modelContainer)
     }
 
@@ -52,6 +55,11 @@ class SettingsProcessor: Processor {
             await setAlertThreshold(symbol: symbol, threshold: threshold)
         case .setAlertPercent(let symbol, let percent):
             await setAlertPercent(symbol: symbol, percent: percent)
+        case .loadInsightsSettings:
+            state.aiInsightsEnabled = insightSettings.isEnabled()
+        case .setInsightsEnabled(let enabled):
+            insightSettings.setEnabled(enabled)
+            state.aiInsightsEnabled = enabled
         }
     }
 

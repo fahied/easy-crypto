@@ -24,4 +24,6 @@ enum SettingsIntent: Intent {
     case setAlertEnabled(symbol: String, enabled: Bool)
     case setAlertThreshold(symbol: String, threshold: Double)
     case setAlertPercent(symbol: String, percent: Double)
+    case loadInsightsSettings
+    case setInsightsEnabled(Bool)
 }
