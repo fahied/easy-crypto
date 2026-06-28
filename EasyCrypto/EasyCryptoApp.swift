@@ -55,7 +55,9 @@ struct EasyCryptoApp: App {
         Self.registerBackgroundRefresh(
             container: container,
             service: self.priceAlertService,
-            candleService: self.candleAlertService
+            candleService: self.candleAlertService,
+            summarizer: TradePatternSummarizer(fifo: fifo),
+            insightEngine: .live
         )
     }
 
@@ -83,14 +85,23 @@ struct EasyCryptoApp: App {
     private static func registerBackgroundRefresh(
         container: ModelContainer,
         service: PriceAlertService,
-        candleService: CandleAlertService
+        candleService: CandleAlertService,
+        summarizer: TradePatternSummarizer,
+        insightEngine: FoundationModelInsightEngine
     ) {
         BGTaskScheduler.shared.register(
             forTaskWithIdentifier: PriceAlertRefresher.taskIdentifier,
             using: nil
         ) { task in
             guard let refreshTask = task as? BGAppRefreshTask else { return }
-            handle(task: refreshTask, container: container, service: service, candleService: candleService)
+            handle(
+                task: refreshTask,
+                container: container,
+                service: service,
+                candleService: candleService,
+                summarizer: summarizer,
+                insightEngine: insightEngine
+            )
         }
     }
 
@@ -106,7 +117,9 @@ struct EasyCryptoApp: App {
         task: BGAppRefreshTask,
         container: ModelContainer,
         service: PriceAlertService,
-        candleService: CandleAlertService
+        candleService: CandleAlertService,
+        summarizer: TradePatternSummarizer,
+        insightEngine: FoundationModelInsightEngine
     ) {
         // Always queue the next refresh so the chain continues.
         scheduleAppRefresh()
@@ -121,6 +134,11 @@ struct EasyCryptoApp: App {
                 try await CandleAlertRefresher.run(
                     modelContext: context,
                     candleService: candleService
+                )
+                try await InsightRefresher.run(
+                    modelContext: context,
+                    summarizer: summarizer,
+                    engine: insightEngine
                 )
                 task.setTaskCompleted(success: true)
             } catch {

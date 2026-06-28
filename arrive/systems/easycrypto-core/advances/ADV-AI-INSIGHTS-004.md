@@ -6,16 +6,16 @@ advance:
   primary_component: "ai-insights"
   components: ["ai-insights", "app-shell"]
   started_at: "2026-06-28T00:00:00Z"
-  implementation_completed_at: ~
+  implementation_completed_at: "2026-06-28T00:00:00Z"
   review_time_estimate_minutes: 30
   review_time_actual_minutes: ~
   pr_links: []
   reviewability_score: 0
   risk_flags: ["concurrency"]
-  evidence: []
+  evidence: ["tdd:red-green", "tests:unit"]
   # Populated by `arrive usage import` / the LiteLLM callback — leave empty when authoring.
   model_usage: []
-  status: planned
+  status: complete
 ---
 
 ## Objective
@@ -54,13 +54,14 @@ After this advance:
 
 ## Planned Implementation Tasks
 
-- [ ] branch: create/confirm feature branch for this advance
-- [ ] test (app-shell): refresher skips within 4h, regenerates after, replaces
-      persisted insights, and stamps `lastGeneratedAt` in one save (fake engine)
-- [ ] test (app-shell): refresher no-ops when the toggle is off or model unavailable
-- [ ] feat (app-shell): `InsightRefresher` (4h throttle + summarize + generate +
+- [x] branch: create/confirm feature branch for this advance
+- [x] test (app-shell): refresher skips within 4h, regenerates after, replaces
+      persisted insights, and stamps `lastGeneratedAt` in one save (stub engine)
+- [x] test (app-shell): refresher no-ops when the toggle is off or model unavailable
+- [x] feat (app-shell): `InsightRefresher` (4h throttle + summarize + generate +
       persist)
-- [ ] feat (app-shell): register models + wire refresher in `EasyCryptoApp` (gated)
+- [x] feat (app-shell): wire refresher into the `EasyCryptoApp` background task
+      (gated). Models already registered in Part 1.
 
 ## Bug Fixes
 
@@ -81,8 +82,10 @@ After this advance:
 
 ## Evidence
 
-- [ ] tdd:red-green
-- [ ] tests:unit (refresher throttle/persist, toggle + availability gating)
+- [x] tdd:red-green
+- [x] tests:unit (refresher skip-within-4h, regenerate-after + stamp, disabled no-op,
+      unavailable no-op — 4 new tests; full EasyCryptoTests suite green —
+      `** TEST SUCCEEDED **`)
 
 ## CI Evidence Notes
 
@@ -98,6 +101,18 @@ After this advance:
 ### 2026-06-28 - docs: draft advance
 - arrive/systems/easycrypto-core/advances/ADV-AI-INSIGHTS-004.md: created advance plan
   (Part 4 of 4, split from the original single advance)
+
+### 2026-06-28 - feat: 4-hour background insight refresher
+- EasyCrypto/BackgroundTasks/InsightRefresher.swift: `@MainActor` refresher — gates
+  on the toggle + model availability (no work when off/unavailable), throttles on
+  `InsightState.lastGeneratedAt` (≥4h), summarizes → engine → replaces `TradingInsight`s
+  → stamps `lastGeneratedAt`, all in one save
+- EasyCrypto/EasyCryptoApp.swift: build `TradePatternSummarizer(fifo:)` +
+  `FoundationModelInsightEngine.live`; thread them through
+  `registerBackgroundRefresh`/`handle`; run `InsightRefresher` after the price/candle
+  refreshers in the background task
+- EasyCryptoTests/Core/Services/InsightRefresherTests.swift: skip-within-4h,
+  regenerate-after + stamp, disabled no-op, unavailable no-op (4 tests)
 
 ## Check for Understanding
 
