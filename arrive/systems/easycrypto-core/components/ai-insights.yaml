@@ -1,0 +1,27 @@
+component:
+  id: ai-insights
+  name: "On-Device AI Insights"
+  type: service
+  owners:
+    - team: easycrypto
+  stage: incubating
+
+selectors:
+  paths:
+    - "EasyCrypto/Core/AI/**"
+    - "EasyCrypto/Features/Insights/**"
+  build_modules: []
+  tags:
+    - ai-insights
+  contracts: []
+
+interfaces:
+  - "FoundationModelInsightEngine"
+  - "TradePatternSummarizer"
+  - "TradingInsight"
+  - "InsightsIntent"
+  - "InsightsState"
+  - "InsightsProcessor"
+  - "InsightsView"
+
+invariants: []
