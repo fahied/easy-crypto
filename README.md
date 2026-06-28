@@ -10,8 +10,8 @@ The Binance iOS app doesn't give you a clear picture of how much you've invested
 
 **EasyCrypto** solves this by importing your Binance spot trade history via the official API and presenting a clean, USDT-denominated view of your entire portfolio — including unrealized P&L, FIFO-based realized P&L, and per-coin breakdowns.
 
-No trading. No WebSocket. No background refresh.  
-Just a clean, accurate snapshot whenever you pull to refresh.
+No trading. No WebSocket. Your data stays on device.  
+Pull to refresh for an accurate snapshot — plus optional background price/candle alerts and **on-device AI insights** powered by Apple Foundation Models.
 
 ---
 
@@ -23,7 +23,8 @@ Just a clean, accurate snapshot whenever you pull to refresh.
 | **Holdings** | Per-coin list showing avg cost, current price, qty, and P&L. Tap a coin → Coin Detail |
 | **Coin Detail** | Glass summary card + Swift Charts line chart (1h / 4h / 1d / 1w) + full trade list |
 | **Trade History** | Chronological trade list grouped by date, filterable by coin. BUY (green) / SELL (red) |
-| **Settings** | Binance API key + secret management, test connection, sync stats, clear all data |
+| **Insights** | On-device AI analysis of your trade history — patterns, risks, and suggestions — via Apple Foundation Models. Refreshed every ~4 hours; never leaves your device |
+| **Settings** | Binance API key + secret, test connection, sync stats, per-coin price & candle-drop alerts, AI-insights toggle, clear all data |
 
 ---
 
@@ -35,6 +36,7 @@ Just a clean, accurate snapshot whenever you pull to refresh.
 | Xcode | **26+** |
 | Swift | **6.2** |
 | Binance account | Read-only API key + secret |
+| Apple Intelligence | Required for **AI Insights** only — every other feature works without it |
 
 ---
 
@@ -78,30 +80,49 @@ Feature/
 
 ```
 EasyCrypto/
-├── EasyCryptoApp.swift              — App entry point, ModelContainer setup
-├── ContentView.swift                — TabView shell
+├── EasyCryptoApp.swift              — App entry point, ModelContainer + background tasks
+├── ContentView.swift                — TabView shell (Portfolio · Holdings · History · Insights · Settings)
 ├── Core/
 │   ├── Architecture/
-│   │   └── MVI.swift                — Base Processor class + intent dispatch
-│   ├── Models/
-│   │   ├── Trade.swift              — @Model: persisted Binance trade record
-│   │   ├── SyncMetadata.swift       — @Model: last synced trade ID per symbol
-│   │   ├── Holding.swift            — Computed per-coin position (not persisted)
-│   │   ├── PortfolioSummary.swift   — Computed portfolio aggregate (not persisted)
-│   │   └── Kline.swift              — Chart candlestick data (not persisted)
-│   └── Services/
-│       ├── BinanceAPIClient.swift   — URLSession + HMAC-SHA256 signing
-│       ├── KeychainService.swift    — Secure credential storage (iOS Keychain)
-│       ├── TradeImportService.swift — Full sync flow: discover → paginate → persist
-│       ├── PriceService.swift       — Batch current-price fetching
-│       └── FIFOCalculator.swift     — FIFO cost-basis and realized P&L engine
+│   │   └── MVI.swift                — Base Processor protocol + intent dispatch
+│   ├── Models/                      — SwiftData @Model + value types
+│   │   ├── Trade.swift              — persisted Binance trade record
+│   │   ├── SyncMetadata.swift       — last synced trade ID per symbol
+│   │   ├── AccountBalance.swift     — persisted balance snapshot (offline holdings)
+│   │   ├── PriceAlertConfig.swift   — per-coin alert settings + de-dup state
+│   │   ├── CandleAlertState.swift   — hourly candle-drop throttle
+│   │   ├── NotificationLogEntry.swift — delivered-notification history
+│   │   ├── TradingInsight.swift     — persisted AI insight
+│   │   ├── InsightState.swift       — 4-hour insight-regeneration throttle
+│   │   ├── Holding.swift / PortfolioSummary.swift / Kline.swift / DailyPnL.swift
+│   ├── Services/                    — struct-with-closures clients
+│   │   ├── BinanceAPIClient.swift   — URLSession + HMAC-SHA256 signing
+│   │   ├── KeychainService.swift    — secure credential storage
+│   │   ├── TradeImportService.swift — discover → paginate → persist sync flow
+│   │   ├── PriceService.swift / BalanceService.swift
+│   │   ├── FIFOCalculator.swift     — FIFO cost-basis & realized-P&L engine
+│   │   ├── HoldingFactory.swift / UnrealizedProfit.swift
+│   │   ├── PriceAlertService.swift  — profit / price-move alert evaluation
+│   │   ├── CandleAlertService.swift — consecutive candle-drop detection
+│   │   └── NotificationService.swift — local notification delivery
+│   └── AI/                          — on-device AI insights (Foundation Models)
+│       ├── TradeSummary.swift           — bounded, Sendable summary (privacy boundary)
+│       ├── TradePatternSummarizer.swift — pure ledger → TradeSummary reducer
+│       ├── InsightGeneration.swift      — @Generable schema, prompt, draft mapper
+│       ├── FoundationModelInsightEngine.swift — availability-gated on-device engine
+│       └── InsightSettingsStore.swift   — enable/disable toggle (UserDefaults)
+├── BackgroundTasks/
+│   ├── PriceAlertRefresher.swift    — background price/profit alert check
+│   ├── CandleAlertRefresher.swift   — hourly candle-drop check
+│   └── InsightRefresher.swift       — ~4-hour on-device insight regeneration
 ├── Features/
 │   ├── Portfolio/                   — Dashboard tab
 │   ├── Holdings/                    — Holdings list + Coin Detail screen
 │   ├── TradeHistory/                — Trade history tab
-│   └── Settings/                   — API key management tab
+│   ├── Insights/                    — AI insights tab (MVI)
+│   └── Settings/                    — API key, alerts, AI toggle
 └── DesignSystem/
-    ├── GlassCard.swift              — iOS 26 .glassEffect() container ViewModifier
+    ├── GlassCard.swift              — iOS 26 glass container ViewModifier
     ├── PnLLabel.swift               — Colored P&L text with ▲▼ arrow
     ├── MetricCard.swift             — Single KPI card (label + value)
     ├── TradeRowView.swift           — Reusable trade list row
@@ -129,9 +150,35 @@ Each buy creates a lot `(price, quantity)`. On sell, lots are consumed earliest-
 
 ---
 
+## On-Device AI Insights
+
+The **Insights** tab analyzes your trade history entirely on device using Apple's
+**Foundation Models** framework (`SystemLanguageModel`). No trade data ever leaves
+your iPhone — there is no network call in the insight path and no cloud model.
+
+**How it works**
+1. `TradePatternSummarizer` reduces your full ledger into a small, bounded
+   `TradeSummary` (per-symbol counts, FIFO realized P&L, win rate, streaks,
+   concentration). This summary — never raw trades — is the only thing the model sees.
+2. `FoundationModelInsightEngine` runs **guided generation** (`@Generable`) to
+   produce typed insights (title, body, category, severity), validated before they
+   are persisted.
+3. Insights regenerate on a best-effort **4-hour** cadence in the background, plus a
+   manual “Analyze” button. They persist in SwiftData so the screen renders instantly.
+
+**Privacy & graceful degradation**
+- 100% on device; the engine performs zero network I/O and has no remote fallback.
+- Requires Apple Intelligence; on unsupported devices the tab shows a neutral
+  “unavailable” message instead of failing.
+- Toggle the feature on or off anytime in **Settings**.
+
+---
+
 ## Dependency Injection
 
-All services follow the [swift-dependencies](https://github.com/pointfreeco/swift-dependencies) **struct-with-closures** pattern. No protocols needed.
+Services use the **struct-with-closures** pattern (no protocols) and are injected
+through **initializers** — there is no external DI framework. Each service ships
+`live`, `preview`, and `noop` values for production, SwiftUI previews, and tests.
 
 ```swift
 // Definition
@@ -146,10 +193,13 @@ extension PriceService {
     static let noop    = PriceService(fetchPrices: { _ in [:] })
 }
 
-// Consumed in processors
-@Observable class PortfolioProcessor {
-    @ObservationIgnored
-    @Dependency(PriceService.self) var priceService
+// Injected via initializer; tests pass stub values directly
+@Observable
+class PortfolioProcessor {
+    private let priceService: PriceService
+    init(priceService: PriceService /* , … */) {
+        self.priceService = priceService
+    }
 }
 ```
 
@@ -192,8 +242,14 @@ EasyCryptoTests/
     ├── Holdings/HoldingsProcessorTests.swift
     ├── Holdings/CoinDetailProcessorTests.swift
     ├── TradeHistory/TradeHistoryProcessorTests.swift
-    └── Settings/SettingsProcessorTests.swift
+    ├── Settings/SettingsProcessorTests.swift
+    └── Insights/InsightsProcessorTests.swift
 ```
+
+The AI-insights layer is covered by `Core/AI` tests (`TradePatternSummarizerTests`,
+`FoundationModelInsightEngineTests`), model round-trips (`TradingInsightTests`),
+`InsightRefresherTests`, and `SettingsInsightsTests` — all using injected stubs so no
+real LLM call runs in tests.
 
 Coverage targets: **≥ 80%** all layers · **≥ 90%** `FIFOCalculator`
 
@@ -240,15 +296,21 @@ xcodebuild test \
 | Binance `-1021` timestamp fix — server time sync on auth failure |
 | Processor state preservation fix — `@State` ownership in views |
 
+### ✅ Phase 4 — Alerts & On-Device AI (Complete)
+
+| What was built |
+|---|
+| Per-coin **price/profit alerts** + **consecutive candle-drop** detection with local notifications and a notification log |
+| **Background tasks** (`BGAppRefreshTask`) running the price, candle, and insight refreshers |
+| **On-device AI Insights** — `TradeSummary` reducer, `@Generable` Foundation Models engine, Insights MVI tab, Settings toggle, and a ~4-hour background refresher |
+
 ---
 
-## Dependency
+## Dependencies
 
-| Package | Version | Purpose |
-|---|---|---|
-| [swift-dependencies](https://github.com/pointfreeco/swift-dependencies) | latest | Dependency injection for all services |
+**No third-party packages.** Everything is built on Apple frameworks:
 
-All other functionality uses Apple frameworks: SwiftUI · SwiftData · Swift Charts · CryptoKit · Security · URLSession · `os.Logger`
+SwiftUI · SwiftData · Swift Charts · **FoundationModels** (on-device AI) · CryptoKit · Security · BackgroundTasks · UserNotifications · URLSession · `os.Logger`
 
 ---
 
@@ -256,7 +318,8 @@ All other functionality uses Apple frameworks: SwiftUI · SwiftData · Swift Cha
 
 ### Near-term
 - [ ] **Real-time prices** — WebSocket connection to Binance stream for live price updates without manual refresh
-- [ ] **Price alerts** — notify when a coin crosses a user-defined price threshold
+- [x] **Price alerts** — per-coin profit & price-move notifications, plus consecutive candle-drop alerts
+- [x] **On-device AI insights** — trade-pattern analysis & suggestions via Apple Foundation Models
 - [ ] **Widget** — iOS home screen widget showing portfolio value and daily P&L
 - [ ] **CSV / PDF export** — export trade history for tax reporting
 - [ ] **Candlestick chart** — replace line chart with OHLCV candlestick in Coin Detail
@@ -275,7 +338,7 @@ All other functionality uses Apple frameworks: SwiftUI · SwiftData · Swift Cha
 
 ### Engineering
 - [ ] **SwiftData schema versioning** — `VersionedSchema` + `SchemaMigrationPlan` for the first model migration
-- [ ] **Background App Refresh** — optional lightweight sync when app is backgrounded
+- [x] **Background App Refresh** — periodic price/candle-alert checks and ~4-hour on-device insight regeneration
 - [ ] **Retry logic** — exponential back-off for rate-limit (HTTP 429) responses
 - [ ] **Snapshot tests** — visual regression tests for design system components
 
@@ -283,5 +346,5 @@ All other functionality uses Apple frameworks: SwiftUI · SwiftData · Swift Cha
 
 ## Documentation
 
-- [`Docs/Project-Brief.md`](Docs/Project-Brief.md) — full feature spec, data models, Binance API details, acceptance criteria
-- [`Docs/TECHNICAL-DIRECTION.md`](Docs/TECHNICAL-DIRECTION.md) — architecture decisions, concurrency model, DI patterns, logging rules, preview strategy, testing methodology
+- [`docs/1.project-overview.md`](docs/1.project-overview.md) — full feature spec, data models, Binance API details, acceptance criteria
+- [`docs/2.technical-direction.md`](docs/2.technical-direction.md) — architecture decisions, concurrency model, DI patterns, logging rules, preview strategy, testing methodology
