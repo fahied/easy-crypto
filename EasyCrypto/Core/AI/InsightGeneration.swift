@@ -63,15 +63,15 @@ nonisolated struct GeneratedInsight: Equatable, Sendable {
 /// Typed output requested from the on-device model via guided generation.
 @Generable
 nonisolated struct TradingInsightDraft: Equatable {
-    @Guide(description: "Concise headline, about 3 to 7 words")
+    @Guide(description: "3 to 7 words")
     var title: String
-    @Guide(description: "One or two sentences: the observation plus a concrete suggestion")
+    @Guide(description: "One or two concise sentences. State the observation first, then one practical suggestion.")
     var body: String
     @Guide(description: "Category, one of: concentration, performance, behavior, risk")
     var category: String
     @Guide(description: "Severity, one of: info, warning, critical")
     var severity: String
-    @Guide(description: "Most relevant trading symbol such as BTCUSDT, or an empty string if general")
+    @Guide(description: "Trading symbol like BTCUSDT. Use an empty string if the insight applies to all trades.")
     var symbol: String
 }
 
@@ -140,35 +140,50 @@ The severity must be one of:
 - critical
 
 Keep every insight concise and actionable.
+Order insights from highest impact to lowest.
+Do not simply restate the numbers; explain what they imply.
 """
 
     static func prompt(for summary: TradeSummary) -> String {
+        let decidedSells = summary.winningSells + summary.losingSells
         var lines: [String] = [
-            "Trading summary (aggregates only, no individual trades):",
+            "Trading statistics (aggregated, no individual trades):",
             "- Total trades: \(summary.totalTrades) (buys: \(summary.buyCount), sells: \(summary.sellCount))",
             "- Distinct symbols: \(summary.symbolCount)",
-            "- Total realized P&L (USDT): \(format(summary.totalRealizedPnL))",
-            "- Winning sells: \(summary.winningSells), losing sells: \(summary.losingSells)",
-            "- Current win streak: \(summary.currentWinStreak), loss streak: \(summary.currentLossStreak)",
-            "- Average holding period (days): \(format(summary.averageHoldingPeriodDays))",
-            "- Concentration (share of trades in the top symbol): \(format(summary.concentrationRatio))",
+            "- Total realized P&L: \(number(summary.totalRealizedPnL)) USDT",
         ]
+
+        if summary.sellCount > 0 {
+            let perSell = summary.totalRealizedPnL / Double(summary.sellCount)
+            lines.append("- Average realized P&L per sell: \(number(perSell)) USDT")
+        }
+        if decidedSells > 0 {
+            let winRate = Double(summary.winningSells) / Double(decidedSells)
+            lines.append(
+                "- Win rate: \(percent(winRate)) (\(summary.winningSells) winning, \(summary.losingSells) losing sells)"
+            )
+        }
+        lines.append("- Current win streak: \(summary.currentWinStreak), loss streak: \(summary.currentLossStreak)")
+        lines.append("- Average holding period: \(number(summary.averageHoldingPeriodDays)) days")
+        lines.append("- Trade concentration: \(percent(summary.concentrationRatio)) of trades are in the top symbol")
 
         if !summary.topSymbols.isEmpty {
             lines.append("- Top symbols:")
             for symbol in summary.topSymbols {
-                lines.append(
-                    "  • \(symbol.symbol): \(symbol.tradeCount) trades, realized P&L \(format(symbol.realizedPnL)) USDT"
-                )
+                lines.append("  \(symbol.symbol)")
+                lines.append("  - trades: \(symbol.tradeCount)")
+                lines.append("  - realized P&L: \(number(symbol.realizedPnL)) USDT")
             }
         }
 
-        lines.append("")
-        lines.append("Produce 1 to 5 concise, actionable insights about patterns, risks, and suggestions.")
         return lines.joined(separator: "\n")
     }
 
-    private static func format(_ value: Double) -> String {
-        String(format: "%.2f", value)
+    private static func number(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(2)))
+    }
+
+    private static func percent(_ ratio: Double) -> String {
+        ratio.formatted(.percent.precision(.fractionLength(0)))
     }
 }

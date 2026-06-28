@@ -135,4 +135,18 @@ struct FoundationModelInsightEngineTests {
         }
         #expect(engine.checkAvailability() == .unavailable(reason: "device not eligible"))
     }
+
+    @Test("When there are no trades, then generate skips inference and returns empty")
+    func generateSkipsWhenNoTrades() async throws {
+        let fake = FakeInsightSession(drafts: [
+            TradingInsightDraft(title: "x", body: "y", category: "risk", severity: "info", symbol: "")
+        ])
+        let engine = FoundationModelInsightEngine.make(session: fake) { .available }
+
+        let result = try await engine.generate(summary(totalTrades: 0), now)
+
+        #expect(result.isEmpty)
+        let prompt = await fake.capturedPrompt
+        #expect(prompt == nil)  // model was never asked
+    }
 }

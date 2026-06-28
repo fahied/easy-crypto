@@ -61,6 +61,8 @@ extension FoundationModelInsightEngine {
                 if case .unavailable(let reason) = checkAvailability() {
                     throw InsightEngineError.unavailable(reason: reason)
                 }
+                // Nothing to analyze — skip inference entirely.
+                guard summary.totalTrades > 0 else { return [] }
                 let drafts = try await session.generateDrafts(
                     instructions: InsightPrompt.instructions,
                     prompt: InsightPrompt.prompt(for: summary)
