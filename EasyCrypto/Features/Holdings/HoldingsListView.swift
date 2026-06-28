@@ -94,7 +94,7 @@ struct HoldingsListView: View {
 
 #Preview("Multiple coins") {
     let container = try! ModelContainer(
-        for: Trade.self, SyncMetadata.self,
+        for: Trade.self, SyncMetadata.self, AccountBalance.self,
         configurations: ModelConfiguration(isStoredInMemoryOnly: true)
     )
     let processor = HoldingsProcessor(
@@ -112,7 +112,7 @@ struct HoldingsListView: View {
 
 #Preview("Single coin") {
     let container = try! ModelContainer(
-        for: Trade.self, SyncMetadata.self,
+        for: Trade.self, SyncMetadata.self, AccountBalance.self,
         configurations: ModelConfiguration(isStoredInMemoryOnly: true)
     )
     let processor = HoldingsProcessor(
@@ -130,7 +130,7 @@ struct HoldingsListView: View {
 
 #Preview("Empty") {
     let container = try! ModelContainer(
-        for: Trade.self, SyncMetadata.self,
+        for: Trade.self, SyncMetadata.self, AccountBalance.self,
         configurations: ModelConfiguration(isStoredInMemoryOnly: true)
     )
     let processor = HoldingsProcessor(

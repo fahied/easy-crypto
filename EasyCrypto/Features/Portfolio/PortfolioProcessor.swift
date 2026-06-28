@@ -15,6 +15,7 @@ class PortfolioProcessor: Processor {
     private let tradeImportService: TradeImportService
     private let priceService: PriceService
     private let fifoCalculator: FIFOCalculator
+    private let balanceService: BalanceService
     private let modelContext: ModelContext
 
     nonisolated private static let logger = Logger(
@@ -26,11 +27,13 @@ class PortfolioProcessor: Processor {
         tradeImportService: TradeImportService,
         priceService: PriceService,
         fifoCalculator: FIFOCalculator,
-        modelContainer: ModelContainer
+        modelContainer: ModelContainer,
+        balanceService: BalanceService = .noop
     ) {
         self.tradeImportService = tradeImportService
         self.priceService = priceService
         self.fifoCalculator = fifoCalculator
+        self.balanceService = balanceService
         self.modelContext = ModelContext(modelContainer)
     }
 
@@ -134,51 +137,65 @@ class PortfolioProcessor: Processor {
         let allTrades = try modelContext.fetch(tradesDescriptor)
         let tradesByAsset = Dictionary(grouping: allTrades) { $0.asset }
 
-        // Fetch current prices
-        let symbols = tradesByAsset.keys.map { "\($0)USDT" }
-        let prices = try await priceService.fetchPrices(symbols)
+        // FIFO per traded asset — cost basis + realized P&L (across all history,
+        // including fully-closed positions).
+        var fifoByAsset: [String: FIFOResult] = [:]
+        var totalRealizedPnL: Double = 0
+        for (asset, trades) in tradesByAsset {
+            let result = fifoCalculator.calculate(trades.map(Self.toFIFOTrade))
+            fifoByAsset[asset] = result
+            totalRealizedPnL += result.realizedPnL
+        }
+
+        // Authoritative wallet balances drive the displayed quantity. On failure,
+        // fall back to the last persisted balances so the UI degrades gracefully.
+        let balances: [String: Double]
+        do {
+            let live = try await balanceService.fetchBalances()
+            try persistBalances(live)
+            balances = live
+        } catch {
+            let persisted = try modelContext.fetch(FetchDescriptor<AccountBalance>())
+            balances = Dictionary(persisted.map { ($0.asset, $0.quantity) }, uniquingKeysWith: { first, _ in first })
+        }
+
+        // Prices for non-USDT balance assets (USDT is valued 1:1).
+        let priceSymbols = balances.keys.filter { $0 != "USDT" }.map { "\($0)USDT" }
+        let prices = try await priceService.fetchPrices(priceSymbols)
 
         var holdings: [Holding] = []
-        var totalRealizedPnL: Double = 0
-
-        for (asset, trades) in tradesByAsset {
-            let fifoTrades = trades.map { trade in
-                FIFOTrade(
-                    price: trade.price,
-                    quantity: trade.quantity,
-                    commission: trade.commission,
-                    commissionAsset: trade.commissionAsset,
-                    asset: trade.asset,
-                    isBuyer: trade.isBuyer
-                )
-            }
-
-            let fifoResult = fifoCalculator.calculate(fifoTrades)
-            totalRealizedPnL += fifoResult.realizedPnL
-
-            guard fifoResult.totalRemainingQuantity > 0 else { continue }
-
-            let currentPrice = prices["\(asset)USDT"] ?? 0
-            let currentValue = fifoResult.totalRemainingQuantity * currentPrice
-            let unrealizedPnL = currentValue - fifoResult.totalInvestedUSDT
-            let unrealizedPnLPercent = fifoResult.totalInvestedUSDT > 0
-                ? (unrealizedPnL / fifoResult.totalInvestedUSDT) * 100
-                : 0
-
-            holdings.append(Holding(
+        for (asset, quantity) in balances where quantity > 0 {
+            let currentPrice = asset == "USDT" ? 1.0 : (prices["\(asset)USDT"] ?? 0)
+            holdings.append(HoldingFactory.make(
                 asset: asset,
-                totalQuantity: fifoResult.totalRemainingQuantity,
-                weightedAvgBuyPrice: fifoResult.weightedAvgBuyPrice,
-                totalInvestedUSDT: fifoResult.totalInvestedUSDT,
+                quantity: quantity,
                 currentPrice: currentPrice,
-                currentValueUSDT: currentValue,
-                unrealizedPnL: unrealizedPnL,
-                unrealizedPnLPercent: unrealizedPnLPercent,
-                realizedPnL: fifoResult.realizedPnL
+                fifo: fifoByAsset[asset] ?? .empty
             ))
         }
 
         return PortfolioData(holdings: holdings, totalRealizedPnL: totalRealizedPnL)
+    }
+
+    /// Replaces the persisted balance snapshot so the Holdings tab can read it offline.
+    private func persistBalances(_ balances: [String: Double]) throws {
+        try modelContext.delete(model: AccountBalance.self)
+        let now = Date()
+        for (asset, quantity) in balances where quantity > 0 {
+            modelContext.insert(AccountBalance(asset: asset, quantity: quantity, updatedAt: now))
+        }
+        try modelContext.save()
+    }
+
+    nonisolated private static func toFIFOTrade(_ trade: Trade) -> FIFOTrade {
+        FIFOTrade(
+            price: trade.price,
+            quantity: trade.quantity,
+            commission: trade.commission,
+            commissionAsset: trade.commissionAsset,
+            asset: trade.asset,
+            isBuyer: trade.isBuyer
+        )
     }
 
     // MARK: - Sorting

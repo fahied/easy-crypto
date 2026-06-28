@@ -46,7 +46,8 @@ struct ContentView: View {
                             tradeImportService: tradeImportService,
                             priceService: priceService,
                             fifoCalculator: fifoCalculator,
-                            modelContainer: modelContainer
+                            modelContainer: modelContainer,
+                            balanceService: .live(apiClient: apiClient)
                         )
                     )
                     .navigationTitle("Portfolio")

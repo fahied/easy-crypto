@@ -12,13 +12,14 @@ import SwiftData
 
 private func makeContainer() throws -> ModelContainer {
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    return try ModelContainer(for: Trade.self, SyncMetadata.self, configurations: config)
+    return try ModelContainer(for: Trade.self, SyncMetadata.self, AccountBalance.self, configurations: config)
 }
 
 private func makeProcessor(
     importService: TradeImportService = .noop,
     priceService: PriceService = .noop,
     fifoCalculator: FIFOCalculator = .live,
+    balanceService: BalanceService = .noop,
     container: ModelContainer? = nil
 ) throws -> PortfolioProcessor {
     let container = try container ?? makeContainer()
@@ -26,7 +27,8 @@ private func makeProcessor(
         tradeImportService: importService,
         priceService: priceService,
         fifoCalculator: fifoCalculator,
-        modelContainer: container
+        modelContainer: container,
+        balanceService: balanceService
     )
 }
 
@@ -102,7 +104,8 @@ struct PortfolioRefreshTests {
 
         let processor = try makeProcessor(
             importService: importService,
-            priceService: priceService
+            priceService: priceService,
+            balanceService: BalanceService(fetchBalances: { ["BTC": 1.0, "ETH": 5.0] })
         )
 
         await processor.handle(.refresh)
@@ -154,7 +157,8 @@ struct PortfolioRefreshTests {
 
         let processor = try makeProcessor(
             importService: importService,
-            priceService: priceService
+            priceService: priceService,
+            balanceService: BalanceService(fetchBalances: { ["BTC": 1.0] })
         )
 
         await processor.handle(.refresh)
@@ -199,7 +203,8 @@ struct PortfolioRefreshTests {
 
         let processor = try makeProcessor(
             importService: importService,
-            priceService: priceService
+            priceService: priceService,
+            balanceService: BalanceService(fetchBalances: { ["BTC": 1.0] })
         )
 
         await processor.handle(.refresh)
@@ -280,7 +285,8 @@ struct PortfolioRefreshTests {
 
         let processor = try makeProcessor(
             importService: importService,
-            priceService: priceService
+            priceService: priceService,
+            balanceService: BalanceService(fetchBalances: { ["ETH": 2.0] })
         )
 
         await processor.handle(.refresh)
@@ -290,6 +296,43 @@ struct PortfolioRefreshTests {
         #expect(processor.state.summary.totalRealizedPnL == 10000.0)
         #expect(processor.state.summary.totalUnrealizedPnL == 1000.0)
         #expect(processor.state.summary.totalPnL == 11000.0)
+    }
+
+    @Test("When wallet balance differs from traded quantity, then holdings use the balance and include USDT")
+    func usesBalanceQuantityAndIncludesUSDT() async throws {
+        let importService = TradeImportService(
+            sync: { _ in
+                TradeImportResult(
+                    mappedTrades: [
+                        makeMappedTrade(
+                            id: 1, symbol: "BTCUSDT", asset: "BTC",
+                            price: 50000, quantity: 1.0,
+                            commission: 0, commissionAsset: "USDT", isBuyer: true
+                        ),
+                    ],
+                    syncUpdates: [SyncUpdate(symbol: "BTCUSDT", lastTradeId: 1, syncDate: Date())]
+                )
+            }
+        )
+        let priceService = PriceService(fetchPrices: { _ in ["BTCUSDT": 60000.0] })
+        let processor = try makeProcessor(
+            importService: importService,
+            priceService: priceService,
+            // Wallet shows less BTC than traded (fee drift) plus a USDT balance.
+            balanceService: BalanceService(fetchBalances: { ["BTC": 0.6, "USDT": 5000.0] })
+        )
+
+        await processor.handle(.refresh)
+
+        let btc = try #require(processor.state.holdings.first { $0.asset == "BTC" })
+        #expect(btc.totalQuantity == 0.6) // wallet balance, not the traded 1.0
+        #expect(btc.currentValueUSDT == 0.6 * 60000.0)
+        #expect(abs(btc.unrealizedPnL - (60000.0 - 50000.0) * 0.6) < 1e-6)
+
+        let usdt = try #require(processor.state.holdings.first { $0.asset == "USDT" })
+        #expect(usdt.totalQuantity == 5000.0)
+        #expect(usdt.currentValueUSDT == 5000.0)
+        #expect(usdt.unrealizedPnL == 0)
     }
 }
 
@@ -392,7 +435,8 @@ struct PortfolioSortTests {
 
         let processor = try makeProcessor(
             importService: importService,
-            priceService: priceService
+            priceService: priceService,
+            balanceService: BalanceService(fetchBalances: { ["BTC": 1.0, "ETH": 10.0, "SOL": 100.0] })
         )
 
         await processor.handle(.refresh)

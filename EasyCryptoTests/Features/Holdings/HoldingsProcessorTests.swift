@@ -12,7 +12,7 @@ import SwiftData
 
 private func makeContainer() throws -> ModelContainer {
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    return try ModelContainer(for: Trade.self, SyncMetadata.self, configurations: config)
+    return try ModelContainer(for: Trade.self, SyncMetadata.self, AccountBalance.self, configurations: config)
 }
 
 private func seedTrades(in container: ModelContainer) throws {
@@ -161,5 +161,30 @@ struct HoldingsLoadTests {
         await processor.handle(.loadHoldings)
 
         #expect(processor.state.holdings.isEmpty)
+    }
+
+    @Test("When account balances are persisted, then quantity comes from the balance, not FIFO")
+    func usesPersistedBalanceQuantity() async throws {
+        let container = try makeContainer()
+        try seedTrades(in: container) // BTC traded 1.0, ETH traded 5.0
+        let context = ModelContext(container)
+        context.insert(AccountBalance(asset: "BTC", quantity: 0.6))
+        context.insert(AccountBalance(asset: "USDT", quantity: 1000))
+        try context.save()
+
+        let processor = HoldingsProcessor(
+            priceService: PriceService(fetchPrices: { _ in ["BTCUSDT": 60000.0] }),
+            fifoCalculator: .live,
+            modelContainer: container
+        )
+
+        await processor.handle(.loadHoldings)
+
+        let btc = try #require(processor.state.holdings.first { $0.asset == "BTC" })
+        #expect(btc.totalQuantity == 0.6) // wallet balance, not the traded 1.0
+        let usdt = try #require(processor.state.holdings.first { $0.asset == "USDT" })
+        #expect(usdt.totalQuantity == 1000)
+        // ETH has trades but no balance row — excluded once balances are authoritative.
+        #expect(processor.state.holdings.contains { $0.asset == "ETH" } == false)
     }
 }

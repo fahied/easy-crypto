@@ -43,42 +43,38 @@ class HoldingsProcessor: Processor {
             let allTrades = try modelContext.fetch(descriptor)
             let tradesByAsset = Dictionary(grouping: allTrades) { $0.asset }
 
-            let symbols = tradesByAsset.keys.map { "\($0)USDT" }
-            let prices = try await priceService.fetchPrices(symbols)
+            // FIFO per traded asset for cost basis / realized P&L.
+            var fifoByAsset: [String: FIFOResult] = [:]
+            for (asset, trades) in tradesByAsset {
+                fifoByAsset[asset] = fifoCalculator.calculate(trades.map(Self.toFIFOTrade))
+            }
+
+            // Authoritative wallet balances (persisted by the portfolio refresh).
+            // Fall back to FIFO remaining quantity when no snapshot exists yet.
+            let persisted = try modelContext.fetch(FetchDescriptor<AccountBalance>())
+            let quantities: [String: Double]
+            if persisted.isEmpty {
+                quantities = fifoByAsset.compactMapValues {
+                    $0.totalRemainingQuantity > 0 ? $0.totalRemainingQuantity : nil
+                }
+            } else {
+                quantities = Dictionary(
+                    persisted.map { ($0.asset, $0.quantity) },
+                    uniquingKeysWith: { first, _ in first }
+                )
+            }
+
+            let priceSymbols = quantities.keys.filter { $0 != "USDT" }.map { "\($0)USDT" }
+            let prices = try await priceService.fetchPrices(priceSymbols)
 
             var holdings: [Holding] = []
-
-            for (asset, trades) in tradesByAsset {
-                let fifoTrades = trades.map { trade in
-                    FIFOTrade(
-                        price: trade.price,
-                        quantity: trade.quantity,
-                        commission: trade.commission,
-                        commissionAsset: trade.commissionAsset,
-                        asset: trade.asset,
-                        isBuyer: trade.isBuyer
-                    )
-                }
-
-                let result = fifoCalculator.calculate(fifoTrades)
-                guard result.totalRemainingQuantity > 0 else { continue }
-
-                let currentPrice = prices["\(asset)USDT"] ?? 0
-                let currentValue = result.totalRemainingQuantity * currentPrice
-                let unrealizedPnL = currentValue - result.totalInvestedUSDT
-                let unrealizedPnLPercent = result.totalInvestedUSDT > 0
-                    ? (unrealizedPnL / result.totalInvestedUSDT) * 100 : 0
-
-                holdings.append(Holding(
+            for (asset, quantity) in quantities where quantity > 0 {
+                let currentPrice = asset == "USDT" ? 1.0 : (prices["\(asset)USDT"] ?? 0)
+                holdings.append(HoldingFactory.make(
                     asset: asset,
-                    totalQuantity: result.totalRemainingQuantity,
-                    weightedAvgBuyPrice: result.weightedAvgBuyPrice,
-                    totalInvestedUSDT: result.totalInvestedUSDT,
+                    quantity: quantity,
                     currentPrice: currentPrice,
-                    currentValueUSDT: currentValue,
-                    unrealizedPnL: unrealizedPnL,
-                    unrealizedPnLPercent: unrealizedPnLPercent,
-                    realizedPnL: result.realizedPnL
+                    fifo: fifoByAsset[asset] ?? .empty
                 ))
             }
 
@@ -88,5 +84,16 @@ class HoldingsProcessor: Processor {
         }
 
         state.isLoading = false
+    }
+
+    nonisolated private static func toFIFOTrade(_ trade: Trade) -> FIFOTrade {
+        FIFOTrade(
+            price: trade.price,
+            quantity: trade.quantity,
+            commission: trade.commission,
+            commissionAsset: trade.commissionAsset,
+            asset: trade.asset,
+            isBuyer: trade.isBuyer
+        )
     }
 }
