@@ -82,7 +82,14 @@ struct ContentView: View {
                             modelContainer: modelContainer,
                             summarizer: TradePatternSummarizer(fifo: fifoCalculator),
                             engine: .live
-                        )
+                        ),
+                        makeChatProcessor: {
+                            InsightChatProcessor(
+                                modelContainer: modelContainer,
+                                summarizer: TradePatternSummarizer(fifo: fifoCalculator),
+                                engine: .live
+                            )
+                        }
                     )
                     .navigationTitle("Insights")
                 }

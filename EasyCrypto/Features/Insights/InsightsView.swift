@@ -8,6 +8,9 @@ import SwiftData
 
 struct InsightsView: View {
     @State var processor: InsightsProcessor
+    let makeChatProcessor: () -> InsightChatProcessor
+
+    @State private var showingChat = false
 
     private var state: InsightsState { processor.state }
 
@@ -52,6 +55,13 @@ struct InsightsView: View {
         .task {
             await processor.handle(.load)
         }
+        .sheet(isPresented: $showingChat) {
+            NavigationStack {
+                InsightChatView(processor: makeChatProcessor())
+                    .navigationTitle("Ask AI")
+                    .navigationBarTitleDisplayMode(.inline)
+            }
+        }
     }
 
     // MARK: - Header
@@ -88,6 +98,19 @@ struct InsightsView: View {
             .buttonStyle(.borderedProminent)
             .tint(Theme.accent)
             .disabled(state.isLoading || state.availability == .disabled)
+
+            Button {
+                showingChat = true
+            } label: {
+                HStack {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                    Text("Ask a question")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(Theme.accent)
+            .disabled(state.availability == .disabled)
 
             if let error = state.error {
                 Text(error)
@@ -213,7 +236,15 @@ struct InsightsView: View {
                 summarizer: TradePatternSummarizer(fifo: .live),
                 engine: engine,
                 settings: .live(defaults: UserDefaults(suiteName: "preview-insights")!)
-            )
+            ),
+            makeChatProcessor: {
+                InsightChatProcessor(
+                    modelContainer: container,
+                    summarizer: TradePatternSummarizer(fifo: .live),
+                    engine: engine,
+                    settings: .live(defaults: UserDefaults(suiteName: "preview-insights")!)
+                )
+            }
         )
         .navigationTitle("Insights")
     }
