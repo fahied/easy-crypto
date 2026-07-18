@@ -27,7 +27,20 @@ extension PriceService {
             fetchPrices: { symbols in
                 guard !symbols.isEmpty else { return [:] }
 
-                let tickers = try await apiClient.fetchTickerPrices(symbols)
+                let tickers: [BinanceTickerPrice]
+                do {
+                    tickers = try await apiClient.fetchTickerPrices(symbols)
+                } catch let error as BinanceError {
+                    // Partial failures (e.g. some symbols not listed) shouldn't
+                    // bring down the whole portfolio. Log and return whatever
+                    // we can salvage; the caller will treat missing prices as 0.
+                    logger.warning("Ticker price fetch degraded: \(error.localizedDescription ?? "")")
+                    return [:]
+                } catch {
+                    logger.warning("Ticker price fetch failed: \(error.localizedDescription ?? "")")
+                    return [:]
+                }
+
                 var priceMap: [String: Double] = [:]
                 for ticker in tickers {
                     if let price = Double(ticker.price) {

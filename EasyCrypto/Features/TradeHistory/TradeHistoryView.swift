@@ -221,8 +221,8 @@ private struct CalendarMonthView: View {
 
     private var weekdayHeader: some View {
         HStack(spacing: 6) {
-            ForEach(weekdaySymbols, id: \.self) { symbol in
-                Text(symbol)
+            ForEach(weekdayLabels) { entry in
+                Text(entry.symbol)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
@@ -245,10 +245,16 @@ private struct CalendarMonthView: View {
 
     // MARK: - Date math
 
-    private var weekdaySymbols: [String] {
+    private struct WeekdayLabel: Identifiable {
+        let id: Int
+        let symbol: String
+    }
+
+    private var weekdayLabels: [WeekdayLabel] {
         let symbols = calendar.veryShortStandaloneWeekdaySymbols
         let first = calendar.firstWeekday - 1
-        return Array(symbols[first...] + symbols[..<first])
+        let reordered = Array(symbols[first...] + symbols[..<first])
+        return reordered.enumerated().map { WeekdayLabel(id: $0.offset, symbol: $0.element) }
     }
 
     private var daysInMonth: [Date] {

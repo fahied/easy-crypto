@@ -160,11 +160,16 @@ class PortfolioProcessor: Processor {
         }
 
         // Prices for non-USDT balance assets (USDT is valued 1:1).
-        let priceSymbols = balances.keys.filter { $0 != "USDT" }.map { "\($0)USDT" }
+        // Filter out dust balances that don't represent meaningful holdings and
+        // won't have a USDT trading pair anyway (e.g. leftover "T" from testnet).
+        let dustThreshold = 0.001
+        let priceAssets = balances.keys
+            .filter { $0 != "USDT" && balances[$0] ?? 0 >= dustThreshold }
+        let priceSymbols = priceAssets.map { "\($0)USDT" }
         let prices = try await priceService.fetchPrices(priceSymbols)
 
         var holdings: [Holding] = []
-        for (asset, quantity) in balances where quantity > 0 {
+        for (asset, quantity) in balances where quantity >= dustThreshold {
             let currentPrice = asset == "USDT" ? 1.0 : (prices["\(asset)USDT"] ?? 0)
             holdings.append(HoldingFactory.make(
                 asset: asset,
