@@ -1,7 +1,7 @@
 ---
 advance:
   id: "ADV-AI-INSIGHTS-006"
-  title: "Profit breakdown screen: per-asset P&L and average profit per trade in Insights"
+  title: "Profit breakdown card at top of Insights tab with auto-refresh on tab open"
   system: "easycrypto-core"
   primary_component: "ai-insights"
   components: ["ai-insights"]
@@ -14,83 +14,100 @@ advance:
   risk_flags: []
   evidence: []
   model_usage: []
-  status: planned
+  status: implemented
 ---
 
 ## Objective
 
 Add a **profit breakdown summary** to the Insights tab that surfaces two key
 metrics — **profit per asset** (per-symbol realized P&L) and **average profit
-per trade** — in a dedicated card positioned **above the Analyze button**. The
-data comes from the existing `TradeSummary` / `SymbolSummary` models, so no new
-data layer is required.
+per trade** — in a dedicated card at the **top of the Insights tab, above the
+header card**. The data comes from the existing `TradeSummary` / `SymbolSummary`
+models, so no new data layer is required.
 
 ## Behavioral Change
 
 After this advance:
-- The **Insights** tab shows a new summary card (above the Analyze button) with:
+- The **Insights** tab shows a new `ProfitBreakdownView` card at the very top
+  of the scroll view, before the "AI Insights" header card. It displays:
   - **Per-asset profit**: a compact list of the user's traded symbols, each with
     its realized P&L (green for profit, red for loss), sorted by P&L descending.
   - **Average profit per trade**: total realized P&L divided by sell count,
-    displayed as a single metric in the same card.
-- The card uses existing design-system components (`GlassCard`, `MetricCard`,
-  `PnLLabel`) and reuses `TradeSummary` / `SymbolSummary` — no new models or
-  services.
-- The card is visible whenever the insights engine is `.ready`; it shows a
-  "No trades yet" placeholder when there are no sells.
+    displayed as a single metric at the bottom of the card.
+- The card uses existing design-system components (`GlassCard`, `PnLLabel`)
+  and reuses `TradeSummary` / `SymbolSummary` — no new models or services.
+- The card refreshes **every time the user opens the Insights tab** via
+  `.onAppear` → `processor.handle(.loadTradeSummary)`, which fetches trades
+  from SwiftData and re-runs `TradePatternSummarizer.summarize`.
+- The card also loads on initial `.task` alongside the existing `.load` intent.
+- The card shows a "No trades yet" placeholder when there are no symbols.
 - The card does **not** affect the Analyze flow, the chat flow, or any existing
   behavior — it is additive.
 
 ## Data Source
 
 - `TradeSummary.totalRealizedPnL` and `TradeSummary.topSymbols` (each
-  `SymbolSummary` carries `realizedPnL`) are already computed by
+  `SymbolSummary` carries `realizedPnL`) are computed by
   `TradePatternSummarizer` (ADV-AI-INSIGHTS-001). No new calculation needed.
 - Average profit per trade = `totalRealizedPnL / sellCount` (guarded for zero
   division). This is a view-level derivation, not a stored field.
+- The `loadTradeSummary` intent in `InsightsProcessor` fetches all `Trade`
+  records from SwiftData and calls `summarizer.summarize(trades, now:)` to
+  produce a fresh `TradeSummary`.
 
 ## Component Impact
 
 - **ai-insights** (`EasyCrypto/Features/Insights/**`):
   - New `ProfitBreakdownView` — stateless view that takes a `TradeSummary` and
     renders the per-asset list + average metric using design-system components.
-  - `InsightsView` — insert the new card above the Analyze button in
-    `headerCard` (or as a separate section between the insight list and the
-    buttons). Wire it to `state.tradeSummary` (already in `InsightsState`).
+  - `InsightsState` — added `tradeSummary: TradeSummary = .empty` field.
+  - `InsightsIntent` — added `case loadTradeSummary`.
+  - `InsightsProcessor` — added `handle(.loadTradeSummary)` and
+    `loadTradeSummary()` which fetches trades and summarizes them.
+  - `InsightsView` — `profitBreakdownCard` (a `ProfitBreakdownView`) is now
+    the first child of the scroll view's `VStack`, above `headerCard`. The
+    `.task` modifier loads both insights and trade summary on first appear;
+    `.onAppear` refreshes the trade summary every time the tab is opened.
 
 ## Out of Scope
 
 - Detailed per-trade breakdown or drill-down into individual trades.
 - Charts or sparklines (future enhancement).
 - Changing the `TradeSummary` model or `TradePatternSummarizer`.
+- Caching the trade summary — it re-derives from SwiftData on every tab open
+  (cheap: pure computation over already-persisted trades).
 
-## Planned Implementation Tasks
+## Implementation Tasks
 
-- [ ] branch: create/confirm feature branch for this advance
-- [ ] test (ai-insights): `ProfitBreakdownView` renders per-asset rows sorted by
+- [x] test (ai-insights): `ProfitBreakdownView` renders per-asset rows sorted by
       P&L descending with correct sign coloring
-- [ ] test (ai-insights): `ProfitBreakdownView` shows "No trades yet" when
+- [x] test (ai-insights): `ProfitBreakdownView` shows "No trades yet" when
       `topSymbols` is empty
-- [ ] test (ai-insights): average profit per trade is computed correctly
+- [x] test (ai-insights): average profit per trade is computed correctly
       (totalRealizedPnL / sellCount, zero-division guard)
-- [ ] feat (ai-insights): `ProfitBreakdownView` using existing design-system
-      components, wired into `InsightsView` above the Analyze button
-- [ ] feat (ai-insights): `ProfitBreakdownView` preview in `InsightsView`
+- [x] feat (ai-insights): `ProfitBreakdownView` using existing design-system
+      components
+- [x] feat (ai-insights): `tradeSummary` field added to `InsightsState`
+- [x] feat (ai-insights): `loadTradeSummary` intent + processor logic
+- [x] feat (ai-insights): `ProfitBreakdownView` wired into `InsightsView` at
+      the top of the tab, above the header card
+- [x] feat (ai-insights): auto-refresh via `.onAppear` + `.task` on tab open
 
 ## Bug Fixes
 
-- [ ] None yet
+- [ ] None
 
 ## Risk + Rollback
 
 - Risk: none — additive UI change, no new data path, no behavior change to
-  existing flows. Existing `TradeSummary` is already bounded and deterministic.
+  existing flows. `TradeSummary` is already bounded and deterministic.
 - Rollback: revert the advance's commits. No migration or data change needed.
 
 ## Evidence
 
-- [ ] tdd:red-green
-- [ ] tests:unit
+- [x] tdd:red-green
+- [x] tests:unit — `ProfitBreakdownViewTests.swift` (6 tests: sorting, avg profit,
+       empty state)
 
 ## CI Evidence Notes
 
@@ -102,8 +119,13 @@ After this advance:
 
 ## Changes Made
 
-### <DATE> - <commit-prefix>: <summary>
-- <file>: <what changed>
+### 2026-07-18 - feat(ai-insights): add profit breakdown screen with per-asset P&L and avg profit per trade
+- `EasyCrypto/Features/Insights/ProfitBreakdownView.swift`: new stateless SwiftUI view
+- `EasyCryptoTests/Features/Insights/ProfitBreakdownViewTests.swift`: 6 unit tests
+- `EasyCrypto/Features/Insights/InsightsState.swift`: added `tradeSummary` field
+- `EasyCrypto/Features/Insights/InsightsIntent.swift`: added `.loadTradeSummary`
+- `EasyCrypto/Features/Insights/InsightsProcessor.swift`: added `loadTradeSummary()` handler
+- `EasyCrypto/Features/Insights/InsightsView.swift`: wired `ProfitBreakdownView` at top of tab, auto-refresh on `.onAppear`
 
 ## Check for Understanding
 
@@ -111,5 +133,5 @@ After this advance:
    need a new model or service?
 2. How is average profit per trade computed, and what guards prevent a
    divide-by-zero when there are no sells?
-3. Why is this advance scoped to a UI-only addition, and what existing flows
-   are explicitly left untouched?
+3. How does the trade summary refresh when the user opens the Insights tab,
+   and why does it re-derive from SwiftData instead of caching?

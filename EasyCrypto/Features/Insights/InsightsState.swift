@@ -42,4 +42,5 @@ struct InsightsState: ViewState {
     var availability: InsightsAvailability = .ready
     var error: String?
     var lastGeneratedAt: Date?
+    var tradeSummary: TradeSummary = .empty
 }

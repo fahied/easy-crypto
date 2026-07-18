@@ -10,4 +10,6 @@ enum InsightsIntent: Intent {
     case load
     /// Regenerate insights on-device from the latest trade history.
     case refresh
+    /// Load the trade summary for the profit breakdown card.
+    case loadTradeSummary
 }

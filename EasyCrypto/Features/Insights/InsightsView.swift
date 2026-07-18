@@ -17,6 +17,8 @@ struct InsightsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: Theme.sectionSpacing) {
+                profitBreakdownCard
+
                 headerCard
 
                 switch state.availability {
@@ -54,6 +56,10 @@ struct InsightsView: View {
         .scrollIndicators(.hidden)
         .task {
             await processor.handle(.load)
+            await processor.handle(.loadTradeSummary)
+        }
+        .onAppear {
+            Task { await processor.handle(.loadTradeSummary) }
         }
         .sheet(isPresented: $showingChat) {
             NavigationStack {
@@ -62,6 +68,12 @@ struct InsightsView: View {
                     .navigationBarTitleDisplayMode(.inline)
             }
         }
+    }
+
+    // MARK: - Profit Breakdown
+
+    private var profitBreakdownCard: some View {
+        ProfitBreakdownView(summary: state.tradeSummary)
     }
 
     // MARK: - Header

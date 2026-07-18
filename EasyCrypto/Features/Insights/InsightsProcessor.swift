@@ -49,6 +49,8 @@ class InsightsProcessor: Processor {
             await load()
         case .refresh:
             await refresh()
+        case .loadTradeSummary:
+            await loadTradeSummary()
         }
     }
 
@@ -62,6 +64,16 @@ class InsightsProcessor: Processor {
             state.error = error.localizedDescription
         }
         state.availability = currentAvailability()
+    }
+
+    private func loadTradeSummary() async {
+        do {
+            let trades = try modelContext.fetch(FetchDescriptor<Trade>())
+            state.tradeSummary = summarizer.summarize(trades, now: now())
+        } catch {
+            state.tradeSummary = .empty
+            Self.logger.error("Failed to load trade summary: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - Refresh
