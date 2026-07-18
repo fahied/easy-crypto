@@ -101,8 +101,12 @@ class InsightsProcessor: Processor {
             state.availability = .ready
             Self.logger.info("Generated \(generated.count) insights on device")
         } catch let error as InsightEngineError {
-            if case .unavailable(let reason) = error {
+            switch error {
+            case .unavailable(let reason):
                 state.availability = .unavailable(reason: reason)
+            case .refused:
+                state.error = "The model could not analyze this data. Try again or add more trades."
+                Self.logger.error("Insight generation failed: model refused to answer")
             }
         } catch {
             state.error = error.localizedDescription

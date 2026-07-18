@@ -6,7 +6,7 @@ advance:
   primary_component: "ai-insights"
   components: ["ai-insights"]
   started_at: "2026-07-17T00:00:00Z"
-  implementation_completed_at: ~
+  implementation_completed_at: "2026-07-18T22:57:00Z"
   review_time_estimate_minutes: 30
   review_time_actual_minutes: ~
   pr_links: []
@@ -95,7 +95,7 @@ After this advance:
 
 ## Bug Fixes
 
-- [ ] None
+- [x] fix (ai-insights): handle on-device model refusal ("The model refused to answer") by softening prompt language, allowing 0-insight batches, and surfacing a user-friendly error message
 
 ## Risk + Rollback
 
@@ -108,6 +108,8 @@ After this advance:
 - [x] tdd:red-green
 - [x] tests:unit — `ProfitBreakdownViewTests.swift` (6 tests: sorting, avg profit,
        empty state)
+- [x] bugfix: model refusal — `InsightEngineError.refused` + user-friendly error
+       message, softened prompt to avoid financial-advice filter
 
 ## CI Evidence Notes
 
@@ -127,6 +129,11 @@ After this advance:
 - `EasyCrypto/Features/Insights/InsightsProcessor.swift`: added `loadTradeSummary()` handler
 - `EasyCrypto/Features/Insights/InsightsView.swift`: wired `ProfitBreakdownView` at top of tab, auto-refresh on `.onAppear`
 
+### 2026-07-18 - fix(ai-insights): handle model refusal error during insight generation
+- `EasyCrypto/Core/AI/FoundationModelInsightEngine.swift`: added `InsightEngineError.refused` case; `LanguageModelInsightSession` catches refusal errors and maps to typed error
+- `EasyCrypto/Core/AI/InsightGeneration.swift`: softened prompt to avoid financial-advice filter (removed "explain what they imply", "concise and actionable"); added informational-use disclaimer; changed schema to allow 0–5 insights (was 1–5)
+- `EasyCrypto/Features/Insights/InsightsProcessor.swift`: surface user-friendly message on refusal instead of raw error string
+
 ## Check for Understanding
 
 1. Where does the profit-per-asset data come from, and why doesn't this advance
@@ -135,3 +142,5 @@ After this advance:
    divide-by-zero when there are no sells?
 3. How does the trade summary refresh when the user opens the Insights tab,
    and why does it re-derive from SwiftData instead of caching?
+4. What caused the on-device model to refuse insight generation, and how does
+   the fix handle that error gracefully?

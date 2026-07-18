@@ -78,7 +78,7 @@ nonisolated struct TradingInsightDraft: Equatable {
 /// Container so the model returns a bounded batch of insights in one response.
 @Generable
 nonisolated struct InsightDraftBatch: Equatable {
-    @Guide(description: "Between 1 and 5 insights, most important first")
+    @Guide(description: "Between 0 and 5 insights, most important first. Return an empty array if the statistics do not suggest any notable patterns.")
     var insights: [TradingInsightDraft]
 }
 
@@ -115,11 +115,11 @@ nonisolated enum InsightPrompt {
     static let instructions = """
 You are a crypto trading journal assistant.
 
-Analyze only the trading statistics provided.
+Analyze the trading statistics provided and describe the patterns you observe.
 Never assume or invent missing information.
-Base every conclusion only on the supplied statistics.
+Base every observation only on the supplied statistics.
 
-Generate between 1 and 5 insights.
+Generate between 0 and 5 insights.
 
 Each insight must include:
 - title
@@ -139,9 +139,11 @@ The severity must be one of:
 - warning
 - critical
 
-Keep every insight concise and actionable.
+Keep every insight concise and descriptive.
 Order insights from highest impact to lowest.
-Do not simply restate the numbers; explain what they imply.
+Describe what the numbers show; do not make trading recommendations.
+
+These observations are for informational purposes only and do not constitute financial advice.
 """
 
     static func prompt(for summary: TradeSummary) -> String {

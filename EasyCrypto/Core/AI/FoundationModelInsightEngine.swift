@@ -10,6 +10,7 @@ import FoundationModels
 
 nonisolated enum InsightEngineError: Error, Equatable {
     case unavailable(reason: String)
+    case refused
 }
 
 // MARK: - Session seam
@@ -24,8 +25,17 @@ nonisolated protocol InsightDraftGenerating: Sendable {
 nonisolated struct LanguageModelInsightSession: InsightDraftGenerating {
     func generateDrafts(instructions: String, prompt: String) async throws -> [TradingInsightDraft] {
         let session = LanguageModelSession(instructions: instructions)
-        let response = try await session.respond(to: prompt, generating: InsightDraftBatch.self)
-        return response.content.insights
+        do {
+            let response = try await session.respond(to: prompt, generating: InsightDraftBatch.self)
+            return response.content.insights
+        } catch {
+            // The on-device model may refuse certain prompts (e.g. financial-advice filter).
+            let description = (error as NSError).localizedDescription
+            if description.contains("refused") {
+                throw InsightEngineError.refused
+            }
+            throw error
+        }
     }
 }
 
