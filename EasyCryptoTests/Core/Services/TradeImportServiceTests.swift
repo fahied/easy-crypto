@@ -451,6 +451,87 @@ struct ImportErrorTests {
     }
 }
 
+// MARK: - Rate-Limit Retry Tests
+
+@Suite("Given a trade import service handling rate limits")
+struct RateLimitRetryTests {
+
+    @Test("When a symbol is rate limited then succeeds, then retries and fetches trades")
+    func retriesOnRateLimit() async throws {
+        let callCount = Locked(0)
+
+        let client = BinanceAPIClient(
+            fetchAccount: { [makeBalance("BTC")] },
+            fetchMyTrades: { symbol, _ in
+                callCount.value += 1
+                if callCount.value == 1 {
+                    throw BinanceError.rateLimited(retryAfterSeconds: nil)
+                }
+                return [makeBinanceTrade(id: 1, symbol: symbol)]
+            },
+            fetchTickerPrices: { _ in [] },
+            fetchKlines: { _, _, _ in [] }
+        )
+
+        let service = TradeImportService.live(apiClient: client)
+        let result = try await service.sync([:])
+
+        // Should have retried at least once
+        #expect(callCount.value >= 2)
+        #expect(result.mappedTrades.count == 1)
+        #expect(result.mappedTrades[0].symbol == "BTCUSDT")
+    }
+
+    @Test("When a symbol is rate limited on all retries, then it is skipped")
+    func skipsAfterExhaustingRateLimitRetries() async throws {
+        let client = BinanceAPIClient(
+            fetchAccount: { [makeBalance("BTC")] },
+            fetchMyTrades: { _, _ in
+                throw BinanceError.rateLimited(retryAfterSeconds: nil)
+            },
+            fetchTickerPrices: { _ in [] },
+            fetchKlines: { _, _, _ in [] }
+        )
+
+        let service = TradeImportService.live(apiClient: client)
+        let result = try await service.sync([:])
+
+        // No trades after exhausting retries
+        #expect(result.mappedTrades.isEmpty)
+        #expect(result.syncUpdates.isEmpty)
+    }
+
+    @Test("When rate limited then succeeds, other symbols still sync")
+    func rateLimitRetryDoesNotBlockOtherSymbols() async throws {
+        let btcCallCount = Locked(0)
+
+        let client = BinanceAPIClient(
+            fetchAccount: { [makeBalance("BTC"), makeBalance("ETH")] },
+            fetchMyTrades: { symbol, _ in
+                if symbol == "BTCUSDT" {
+                    btcCallCount.value += 1
+                    if btcCallCount.value == 1 {
+                        throw BinanceError.rateLimited(retryAfterSeconds: nil)
+                    }
+                    return [makeBinanceTrade(id: 1, symbol: symbol)]
+                }
+                return [makeBinanceTrade(id: 2, symbol: symbol)]
+            },
+            fetchTickerPrices: { _ in [] },
+            fetchKlines: { _, _, _ in [] }
+        )
+
+        let service = TradeImportService.live(apiClient: client)
+        let result = try await service.sync([:])
+
+        // Both symbols should have trades
+        #expect(result.mappedTrades.count == 2)
+        let symbols = Set(result.mappedTrades.map(\.symbol))
+        #expect(symbols.contains("BTCUSDT"))
+        #expect(symbols.contains("ETHUSDT"))
+    }
+}
+
 // MARK: - Preview/Noop Client Tests
 
 @Suite("Given a preview TradeImportService")
@@ -467,5 +548,22 @@ struct PreviewImportTests {
         let result = try await TradeImportService.noop.sync([:])
         #expect(result.mappedTrades.isEmpty)
         #expect(result.syncUpdates.isEmpty)
+    }
+}
+
+// MARK: - Helpers
+
+/// A simple thread-safe integer wrapper for tracking call counts across async closures.
+private final class Locked<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value: T
+
+    init(_ value: T) {
+        self._value = value
+    }
+
+    var value: T {
+        get { lock.withLock { _value } }
+        set { lock.withLock { _value = newValue } }
     }
 }

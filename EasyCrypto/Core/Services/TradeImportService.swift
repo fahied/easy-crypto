@@ -61,6 +61,12 @@ extension TradeImportService {
         "BNB",
     ]
 
+    /// Delay between per-asset fetch requests to stay within Binance's weight limits.
+    nonisolated private static let interRequestDelay: Duration = .milliseconds(300)
+
+    /// Maximum retries per symbol when a 429 rate-limit response is received.
+    nonisolated private static let maxRateLimitRetries = 3
+
     static func live(apiClient: BinanceAPIClient) -> TradeImportService {
         TradeImportService(
             sync: { existingSync in
@@ -86,14 +92,14 @@ extension TradeImportService {
                 var allTrades: [MappedTrade] = []
                 var syncUpdates: [SyncUpdate] = []
 
-                // 2. For each asset, fetch trades with pagination
-                for asset in assets {
+                // 2. For each asset, fetch trades with pagination and retry on rate limits
+                for (index, asset) in assets.enumerated() {
                     let symbol = "\(asset)USDT"
                     let lastTradeId = existingSync[symbol]
                     let startFromId = lastTradeId.map { $0 + 1 }
 
                     do {
-                        let assetTrades = try await fetchTradesWithPagination(
+                        let assetTrades = try await fetchTradesWithRetry(
                             apiClient: apiClient,
                             symbol: symbol,
                             fromId: startFromId
@@ -131,6 +137,12 @@ extension TradeImportService {
                         logger.error("Failed to fetch trades for \(symbol): \(error)")
                         continue
                     }
+
+                    // Small delay between symbols to stay within weight limits,
+                    // but not after the last one.
+                    if index < assets.count - 1 {
+                        try? await Task.sleep(for: interRequestDelay)
+                    }
                 }
 
                 return TradeImportResult(
@@ -141,7 +153,64 @@ extension TradeImportService {
         )
     }
 
-    /// Fetches all trades for a symbol with automatic pagination.
+    /// Fetches all trades for a symbol with automatic pagination and rate-limit retry.
+    private static func fetchTradesWithRetry(
+        apiClient: BinanceAPIClient,
+        symbol: String,
+        fromId: Int64?
+    ) async throws -> [BinanceTrade] {
+        for attempt in 0..<maxRateLimitRetries {
+            do {
+                return try await fetchTradesWithPagination(
+                    apiClient: apiClient,
+                    symbol: symbol,
+                    fromId: fromId
+                )
+            } catch let error as BinanceError {
+                switch error {
+                case .rateLimited(let retryAfterSeconds):
+                    if attempt < maxRateLimitRetries - 1 {
+                        let delayMs = retryAfterSeconds.map { $0 * 1000 }
+                            ?? [500, 1500, 3000][attempt]
+                        logger.warning(
+                            "Rate limited fetching \(symbol), retrying in \(delayMs)ms (attempt \(attempt + 1)/\(maxRateLimitRetries))"
+                        )
+                        try? await Task.sleep(for: .milliseconds(delayMs))
+                    } else {
+                        logger.error(
+                            "Rate limited fetching \(symbol) after \(maxRateLimitRetries) retries, skipping"
+                        )
+                        throw error
+                    }
+                case .invalidCredentials, .noCredentialsConfigured:
+                    // Don't retry auth errors — they won't self-resolve
+                    throw error
+                default:
+                    // Other errors (network, decoding, apiError) — retry once with backoff
+                    if attempt < maxRateLimitRetries - 1 {
+                        let backoff = [500, 1500, 3000][min(attempt, 2)]
+                        logger.warning(
+                            "Error fetching \(symbol): \(error), retrying in \(backoff)ms"
+                        )
+                        try? await Task.sleep(for: .milliseconds(backoff))
+                    } else {
+                        throw error
+                    }
+                }
+            } catch {
+                // Non-Binance errors — retry once then give up
+                if attempt < maxRateLimitRetries - 1 {
+                    try? await Task.sleep(for: .milliseconds(500))
+                } else {
+                    throw error
+                }
+            }
+        }
+        // Unreachable — loop always throws or returns
+        return []
+    }
+
+    /// Fetches all trades for a single symbol with automatic pagination.
     private static func fetchTradesWithPagination(
         apiClient: BinanceAPIClient,
         symbol: String,

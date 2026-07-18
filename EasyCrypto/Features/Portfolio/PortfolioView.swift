@@ -25,6 +25,21 @@ struct PortfolioView: View {
                 }
             }
             .navigationTitle("Portfolio")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        Task { await processor.handle(.refresh) }
+                    } label: {
+                        if state.isLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                    }
+                    .disabled(state.isLoading)
+                }
+            }
             .refreshable {
                 await processor.handle(.refresh)
             }
@@ -172,6 +187,7 @@ struct PortfolioView: View {
             Label("Something Went Wrong", systemImage: "exclamationmark.triangle")
         } description: {
             Text(message)
+                .multilineTextAlignment(.center)
         } actions: {
             Button("Try Again") {
                 processor.send(.refresh)
