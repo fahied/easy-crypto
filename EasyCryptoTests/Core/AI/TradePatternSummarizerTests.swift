@@ -111,4 +111,41 @@ struct TradePatternSummarizerTests {
         #expect(summary.topSymbols.count == TradeSummary.maxSymbols)
         #expect(abs(summary.concentrationRatio - (1.0 / 25.0)) < 1e-9)
     }
+
+    @Test("When cap is exceeded, topSymbols includes the most profitable symbols by P&L not trade count")
+    func topSymbolsRankedByPnL() {
+        let day: TimeInterval = 86_400
+
+        // SYM1: 2 trades, buy @100 sell @600 -> +500 PnL (most profitable, fewest trades)
+        let sym1Trades = [
+            trade(id: 1, symbol: "SYM1USDT", asset: "SYM1", price: 100, isBuyer: true, at: 1),
+            trade(id: 2, symbol: "SYM1USDT", asset: "SYM1", price: 600, isBuyer: false, at: 2),
+        ]
+
+        // SYM2..SYM11: 12 trades each (buy@100 sell@101 -> +1 each), more trades than SYM1
+        let otherTrades = (2...11).flatMap { symIndex -> [Trade] in
+            let baseId = Int64((symIndex - 2) * 12 + 3)
+            return (0..<12).map { i ->
+                trade(
+                    id: baseId + Int64(i),
+                    symbol: "SYM\(symIndex)USDT",
+                    asset: "SYM\(symIndex)",
+                    price: i % 2 == 0 ? 100 : 101,
+                    isBuyer: i % 2 == 0,
+                    at: Double(i) + 3
+                )
+            }
+        }
+
+        let trades = sym1Trades + otherTrades
+        let summary = summarizer.summarize(trades, now: Date(timeIntervalSince1970: 30 * day))
+
+        #expect(summary.topSymbols.count == TradeSummary.maxSymbols)
+
+        let topSymbolNames = summary.topSymbols.map(\.symbol)
+        // SYM1 (+500 PnL) must be in the top 10 even though it has only 2 trades
+        #expect(topSymbolNames.contains("SYM1USDT"), "SYM1USDT (+500 PnL) should be in topSymbols but was excluded")
+        // The entry for SYM1 should be first (highest PnL)
+        #expect(topSymbolNames.first == "SYM1USDT")
+    }
 }

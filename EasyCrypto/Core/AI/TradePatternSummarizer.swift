@@ -51,12 +51,46 @@ nonisolated struct TradePatternSummarizer: Sendable {
                 }
             }
 
-            if let firstBuy = group.first(where: \.isBuyer),
-               let lastSell = group.last(where: { !$0.isBuyer }),
-               lastSell.timestamp > firstBuy.timestamp {
-                holdingSpansDays.append(
-                    lastSell.timestamp.timeIntervalSince(firstBuy.timestamp) / 86_400
-                )
+            var lotQueue: [(timestamp: Date, quantity: Double)] = []
+            var remainingSellQty: Double = 0
+            for (index, trade) in group.enumerated() {
+                if trade.isBuyer {
+                    if remainingSellQty > 0 {
+                        // This buy arrived while a sell was still pending — allocate to
+                        // outstanding sell quantity first (handles commission-in-base buys
+                        // that were partially consumed by a prior sell's fee adjustment).
+                        if remainingSellQty >= trade.quantity {
+                            remainingSellQty -= trade.quantity
+                        } else {
+                            lotQueue.append((timestamp: trade.timestamp, quantity: trade.quantity - remainingSellQty))
+                            remainingSellQty = 0
+                        }
+                    } else {
+                        lotQueue.append((timestamp: trade.timestamp, quantity: trade.quantity))
+                    }
+                } else if let breakdown {
+                    let feeInBase = trade.commissionAsset == trade.asset ? trade.commission : 0
+                    remainingSellQty = trade.quantity + feeInBase
+                    var weightedTimestampSum: Double = 0
+                    var weightedQtySum: Double = 0
+
+                    while remainingSellQty > 1e-12 && !lotQueue.isEmpty {
+                        let consumed = min(lotQueue[0].quantity, remainingSellQty)
+                        weightedTimestampSum += lotQueue[0].timestamp.timeIntervalSince1970 * consumed
+                        weightedQtySum += consumed
+                        remainingSellQty -= consumed
+                        lotQueue[0].quantity -= consumed
+                        if lotQueue[0].quantity <= 1e-12 {
+                            lotQueue.removeFirst()
+                        }
+                    }
+                    if weightedQtySum > 1e-12 {
+                        let avgBuyTimestamp = weightedTimestampSum / weightedQtySum
+                        holdingSpansDays.append(
+                            (trade.timestamp.timeIntervalSince1970 - avgBuyTimestamp) / 86_400
+                        )
+                    }
+                }
             }
         }
 
@@ -80,9 +114,9 @@ nonisolated struct TradePatternSummarizer: Sendable {
             : holdingSpansDays.reduce(0, +) / Double(holdingSpansDays.count)
 
         let ranked = symbolSummaries.sorted {
-            $0.tradeCount != $1.tradeCount
-                ? $0.tradeCount > $1.tradeCount
-                : $0.symbol < $1.symbol
+            $0.realizedPnL != $1.realizedPnL
+                ? $0.realizedPnL > $1.realizedPnL
+                : $0.tradeCount > $1.tradeCount
         }
         let totalTrades = chronological.count
         let buyCount = chronological.lazy.filter(\.isBuyer).count
