@@ -80,9 +80,9 @@ nonisolated struct TradePatternSummarizer: Sendable {
             : holdingSpansDays.reduce(0, +) / Double(holdingSpansDays.count)
 
         let ranked = symbolSummaries.sorted {
-            $0.tradeCount != $1.tradeCount
-                ? $0.tradeCount > $1.tradeCount
-                : $0.symbol < $1.symbol
+            $0.realizedPnL != $1.realizedPnL
+                ? $0.realizedPnL > $1.realizedPnL
+                : $0.tradeCount > $1.tradeCount
         }
         let totalTrades = chronological.count
         let buyCount = chronological.lazy.filter(\.isBuyer).count
