@@ -14,15 +14,22 @@ import SwiftData
 /// over the trade history.
 @Model
 final class AccountBalance {
-    #Unique<AccountBalance>([\.asset])
+    #Unique<AccountBalance>([\.asset, \.tradingMode])
 
     var asset: String
     var quantity: Double
     var updatedAt: Date
+    var tradingMode: TradingMode
 
-    init(asset: String, quantity: Double, updatedAt: Date = Date()) {
+    init(
+        asset: String,
+        quantity: Double,
+        updatedAt: Date = Date(),
+        tradingMode: TradingMode = .spot
+    ) {
         self.asset = asset
         self.quantity = quantity
         self.updatedAt = updatedAt
+        self.tradingMode = tradingMode
     }
 }

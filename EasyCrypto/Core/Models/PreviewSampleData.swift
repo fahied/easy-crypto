@@ -12,7 +12,7 @@ enum PreviewSampleData {
     static var container: ModelContainer {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try! ModelContainer(
-            for: Trade.self, SyncMetadata.self, AccountBalance.self,
+            for: Trade.self, SyncMetadata.self, AccountBalance.self, MarginBalance.self,
             configurations: config
         )
         let context = container.mainContext

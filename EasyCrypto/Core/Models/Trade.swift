@@ -21,6 +21,7 @@ final class Trade {
     var timestamp: Date
     var isBuyer: Bool
     var orderId: Int64
+    var tradingMode: TradingMode
 
     init(
         binanceTradeId: Int64,
@@ -33,7 +34,8 @@ final class Trade {
         commissionAsset: String,
         timestamp: Date,
         isBuyer: Bool,
-        orderId: Int64
+        orderId: Int64,
+        tradingMode: TradingMode = .spot
     ) {
         self.binanceTradeId = binanceTradeId
         self.symbol = symbol
@@ -46,5 +48,6 @@ final class Trade {
         self.timestamp = timestamp
         self.isBuyer = isBuyer
         self.orderId = orderId
+        self.tradingMode = tradingMode
     }
 }
