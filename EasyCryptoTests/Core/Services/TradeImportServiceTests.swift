@@ -42,7 +42,20 @@ private func makeClient(
         fetchAccount: { balances },
         fetchMyTrades: { symbol, fromId in tradesForSymbol(symbol, fromId) },
         fetchTickerPrices: { _ in [] },
-        fetchKlines: { _, _, _ in [] }
+        fetchKlines: { _, _, _ in [] },
+        fetchMarginAccount: {
+            BinanceMarginAccount(
+                marginLevel: "0", totalAssetOfBtc: "0",
+                totalLiabilityOfBtc: "0", totalNetAssetOfBtc: "0",
+                totalAsset: "0", totalLiability: "0",
+                totalNetAsset: "0", maxBorrowable: "0",
+                maintained: nil, userAssets: []
+            )
+        },
+        fetchMarginMyTrades: { _, _, _ in [] },
+        fetchMarginOpenOrders: { _, _ in [] },
+        fetchMarginAllAssets: { [] },
+        fetchIsolatedMarginTransfers: { _ in [] }
     )
 }
 
@@ -60,7 +73,20 @@ struct AssetDiscoveryTests {
                 [makeBinanceTrade(id: 1, symbol: symbol)]
             },
             fetchTickerPrices: { _ in [] },
-            fetchKlines: { _, _, _ in [] }
+            fetchKlines: { _, _, _ in [] },
+            fetchMarginAccount: {
+                BinanceMarginAccount(
+                    marginLevel: "0", totalAssetOfBtc: "0",
+                    totalLiabilityOfBtc: "0", totalNetAssetOfBtc: "0",
+                    totalAsset: "0", totalLiability: "0",
+                    totalNetAsset: "0", maxBorrowable: "0",
+                    maintained: nil, userAssets: []
+                )
+            },
+            fetchMarginMyTrades: { _, _, _ in [] },
+            fetchMarginOpenOrders: { _, _ in [] },
+            fetchMarginAllAssets: { [] },
+            fetchIsolatedMarginTransfers: { _ in [] }
         )
         let service = TradeImportService.live(apiClient: client)
         let result = try await service.sync([:])
@@ -411,7 +437,20 @@ struct ImportErrorTests {
             fetchAccount: { throw BinanceError.invalidCredentials },
             fetchMyTrades: { _, _ in [] },
             fetchTickerPrices: { _ in [] },
-            fetchKlines: { _, _, _ in [] }
+            fetchKlines: { _, _, _ in [] },
+            fetchMarginAccount: {
+                BinanceMarginAccount(
+                    marginLevel: "0", totalAssetOfBtc: "0",
+                    totalLiabilityOfBtc: "0", totalNetAssetOfBtc: "0",
+                    totalAsset: "0", totalLiability: "0",
+                    totalNetAsset: "0", maxBorrowable: "0",
+                    maintained: nil, userAssets: []
+                )
+            },
+            fetchMarginMyTrades: { _, _, _ in [] },
+            fetchMarginOpenOrders: { _, _ in [] },
+            fetchMarginAllAssets: { [] },
+            fetchIsolatedMarginTransfers: { _ in [] }
         )
         let service = TradeImportService.live(apiClient: client)
 
@@ -440,7 +479,20 @@ struct ImportErrorTests {
                 return []
             },
             fetchTickerPrices: { _ in [] },
-            fetchKlines: { _, _, _ in [] }
+            fetchKlines: { _, _, _ in [] },
+            fetchMarginAccount: {
+                BinanceMarginAccount(
+                    marginLevel: "0", totalAssetOfBtc: "0",
+                    totalLiabilityOfBtc: "0", totalNetAssetOfBtc: "0",
+                    totalAsset: "0", totalLiability: "0",
+                    totalNetAsset: "0", maxBorrowable: "0",
+                    maintained: nil, userAssets: []
+                )
+            },
+            fetchMarginMyTrades: { _, _, _ in [] },
+            fetchMarginOpenOrders: { _, _ in [] },
+            fetchMarginAllAssets: { [] },
+            fetchIsolatedMarginTransfers: { _ in [] }
         )
         let service = TradeImportService.live(apiClient: client)
         let result = try await service.sync([:])
@@ -470,7 +522,20 @@ struct RateLimitRetryTests {
                 return [makeBinanceTrade(id: 1, symbol: symbol)]
             },
             fetchTickerPrices: { _ in [] },
-            fetchKlines: { _, _, _ in [] }
+            fetchKlines: { _, _, _ in [] },
+            fetchMarginAccount: {
+                BinanceMarginAccount(
+                    marginLevel: "0", totalAssetOfBtc: "0",
+                    totalLiabilityOfBtc: "0", totalNetAssetOfBtc: "0",
+                    totalAsset: "0", totalLiability: "0",
+                    totalNetAsset: "0", maxBorrowable: "0",
+                    maintained: nil, userAssets: []
+                )
+            },
+            fetchMarginMyTrades: { _, _, _ in [] },
+            fetchMarginOpenOrders: { _, _ in [] },
+            fetchMarginAllAssets: { [] },
+            fetchIsolatedMarginTransfers: { _ in [] }
         )
 
         let service = TradeImportService.live(apiClient: client)
@@ -490,7 +555,20 @@ struct RateLimitRetryTests {
                 throw BinanceError.rateLimited(retryAfterSeconds: nil)
             },
             fetchTickerPrices: { _ in [] },
-            fetchKlines: { _, _, _ in [] }
+            fetchKlines: { _, _, _ in [] },
+            fetchMarginAccount: {
+                BinanceMarginAccount(
+                    marginLevel: "0", totalAssetOfBtc: "0",
+                    totalLiabilityOfBtc: "0", totalNetAssetOfBtc: "0",
+                    totalAsset: "0", totalLiability: "0",
+                    totalNetAsset: "0", maxBorrowable: "0",
+                    maintained: nil, userAssets: []
+                )
+            },
+            fetchMarginMyTrades: { _, _, _ in [] },
+            fetchMarginOpenOrders: { _, _ in [] },
+            fetchMarginAllAssets: { [] },
+            fetchIsolatedMarginTransfers: { _ in [] }
         )
 
         let service = TradeImportService.live(apiClient: client)
@@ -518,7 +596,20 @@ struct RateLimitRetryTests {
                 return [makeBinanceTrade(id: 2, symbol: symbol)]
             },
             fetchTickerPrices: { _ in [] },
-            fetchKlines: { _, _, _ in [] }
+            fetchKlines: { _, _, _ in [] },
+            fetchMarginAccount: {
+                BinanceMarginAccount(
+                    marginLevel: "0", totalAssetOfBtc: "0",
+                    totalLiabilityOfBtc: "0", totalNetAssetOfBtc: "0",
+                    totalAsset: "0", totalLiability: "0",
+                    totalNetAsset: "0", maxBorrowable: "0",
+                    maintained: nil, userAssets: []
+                )
+            },
+            fetchMarginMyTrades: { _, _, _ in [] },
+            fetchMarginOpenOrders: { _, _ in [] },
+            fetchMarginAllAssets: { [] },
+            fetchIsolatedMarginTransfers: { _ in [] }
         )
 
         let service = TradeImportService.live(apiClient: client)

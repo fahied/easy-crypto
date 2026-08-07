@@ -23,7 +23,20 @@ struct LivePriceServiceTests {
                     BinanceTickerPrice(symbol: "ETHUSDT", price: "3500.25"),
                 ]
             },
-            fetchKlines: { _, _, _ in [] }
+            fetchKlines: { _, _, _ in [] },
+            fetchMarginAccount: {
+                BinanceMarginAccount(
+                    marginLevel: "0", totalAssetOfBtc: "0",
+                    totalLiabilityOfBtc: "0", totalNetAssetOfBtc: "0",
+                    totalAsset: "0", totalLiability: "0",
+                    totalNetAsset: "0", maxBorrowable: "0",
+                    maintained: nil, userAssets: []
+                )
+            },
+            fetchMarginMyTrades: { _, _, _ in [] },
+            fetchMarginOpenOrders: { _, _ in [] },
+            fetchMarginAllAssets: { [] },
+            fetchIsolatedMarginTransfers: { _ in [] }
         )
         let service = PriceService.live(apiClient: apiClient)
         let prices = try await service.fetchPrices(["BTCUSDT", "ETHUSDT"])
@@ -42,7 +55,20 @@ struct LivePriceServiceTests {
                 Issue.record("Should not call API with empty symbols")
                 return []
             },
-            fetchKlines: { _, _, _ in [] }
+            fetchKlines: { _, _, _ in [] },
+            fetchMarginAccount: {
+                BinanceMarginAccount(
+                    marginLevel: "0", totalAssetOfBtc: "0",
+                    totalLiabilityOfBtc: "0", totalNetAssetOfBtc: "0",
+                    totalAsset: "0", totalLiability: "0",
+                    totalNetAsset: "0", maxBorrowable: "0",
+                    maintained: nil, userAssets: []
+                )
+            },
+            fetchMarginMyTrades: { _, _, _ in [] },
+            fetchMarginOpenOrders: { _, _ in [] },
+            fetchMarginAllAssets: { [] },
+            fetchIsolatedMarginTransfers: { _ in [] }
         )
         let service = PriceService.live(apiClient: apiClient)
         let prices = try await service.fetchPrices([])
@@ -61,7 +87,20 @@ struct LivePriceServiceTests {
                     BinanceTickerPrice(symbol: "BADUSDT", price: "not_a_number"),
                 ]
             },
-            fetchKlines: { _, _, _ in [] }
+            fetchKlines: { _, _, _ in [] },
+            fetchMarginAccount: {
+                BinanceMarginAccount(
+                    marginLevel: "0", totalAssetOfBtc: "0",
+                    totalLiabilityOfBtc: "0", totalNetAssetOfBtc: "0",
+                    totalAsset: "0", totalLiability: "0",
+                    totalNetAsset: "0", maxBorrowable: "0",
+                    maintained: nil, userAssets: []
+                )
+            },
+            fetchMarginMyTrades: { _, _, _ in [] },
+            fetchMarginOpenOrders: { _, _ in [] },
+            fetchMarginAllAssets: { [] },
+            fetchIsolatedMarginTransfers: { _ in [] }
         )
         let service = PriceService.live(apiClient: apiClient)
         let prices = try await service.fetchPrices(["BTCUSDT", "BADUSDT"])
@@ -77,7 +116,20 @@ struct LivePriceServiceTests {
             fetchAccount: { [] },
             fetchMyTrades: { _, _ in [] },
             fetchTickerPrices: { _ in throw BinanceError.networkError(underlying: URLError(.notConnectedToInternet)) },
-            fetchKlines: { _, _, _ in [] }
+            fetchKlines: { _, _, _ in [] },
+            fetchMarginAccount: {
+                BinanceMarginAccount(
+                    marginLevel: "0", totalAssetOfBtc: "0",
+                    totalLiabilityOfBtc: "0", totalNetAssetOfBtc: "0",
+                    totalAsset: "0", totalLiability: "0",
+                    totalNetAsset: "0", maxBorrowable: "0",
+                    maintained: nil, userAssets: []
+                )
+            },
+            fetchMarginMyTrades: { _, _, _ in [] },
+            fetchMarginOpenOrders: { _, _ in [] },
+            fetchMarginAllAssets: { [] },
+            fetchIsolatedMarginTransfers: { _ in [] }
         )
         let service = PriceService.live(apiClient: apiClient)
 

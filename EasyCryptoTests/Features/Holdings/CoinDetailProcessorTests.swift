@@ -58,7 +58,20 @@ private func makeProcessor(
             fetchAccount: { [] },
             fetchMyTrades: { _, _ in [] },
             fetchTickerPrices: { _ in [] },
-            fetchKlines: { _, _, _ in klines }
+            fetchKlines: { _, _, _ in klines },
+            fetchMarginAccount: {
+                BinanceMarginAccount(
+                    marginLevel: "0", totalAssetOfBtc: "0",
+                    totalLiabilityOfBtc: "0", totalNetAssetOfBtc: "0",
+                    totalAsset: "0", totalLiability: "0",
+                    totalNetAsset: "0", maxBorrowable: "0",
+                    maintained: nil, userAssets: []
+                )
+            },
+            fetchMarginMyTrades: { _, _, _ in [] },
+            fetchMarginOpenOrders: { _, _ in [] },
+            fetchMarginAllAssets: { [] },
+            fetchIsolatedMarginTransfers: { _ in [] }
         ),
         priceService: PriceService(fetchPrices: { _ in prices }),
         fifoCalculator: .live,
@@ -118,7 +131,20 @@ struct CoinDetailLoadTests {
                 fetchAccount: { [] },
                 fetchMyTrades: { _, _ in [] },
                 fetchTickerPrices: { _ in [] },
-                fetchKlines: { _, _, _ in [] }
+                fetchKlines: { _, _, _ in [] },
+                fetchMarginAccount: {
+                    BinanceMarginAccount(
+                        marginLevel: "0", totalAssetOfBtc: "0",
+                        totalLiabilityOfBtc: "0", totalNetAssetOfBtc: "0",
+                        totalAsset: "0", totalLiability: "0",
+                        totalNetAsset: "0", maxBorrowable: "0",
+                        maintained: nil, userAssets: []
+                    )
+                },
+                fetchMarginMyTrades: { _, _, _ in [] },
+                fetchMarginOpenOrders: { _, _ in [] },
+                fetchMarginAllAssets: { [] },
+                fetchIsolatedMarginTransfers: { _ in [] }
             ),
             priceService: PriceService(fetchPrices: { _ in
                 throw BinanceError.networkError(underlying: URLError(.notConnectedToInternet))
@@ -164,7 +190,20 @@ struct CoinDetailChartIntervalTests {
                 fetchKlines: { _, _, _ in
                     fetchCalled = true
                     return []
-                }
+                },
+                fetchMarginAccount: {
+                    BinanceMarginAccount(
+                        marginLevel: "0", totalAssetOfBtc: "0",
+                        totalLiabilityOfBtc: "0", totalNetAssetOfBtc: "0",
+                        totalAsset: "0", totalLiability: "0",
+                        totalNetAsset: "0", maxBorrowable: "0",
+                        maintained: nil, userAssets: []
+                    )
+                },
+                fetchMarginMyTrades: { _, _, _ in [] },
+                fetchMarginOpenOrders: { _, _ in [] },
+                fetchMarginAllAssets: { [] },
+                fetchIsolatedMarginTransfers: { _ in [] }
             ),
             priceService: .noop,
             fifoCalculator: .live,
@@ -193,7 +232,20 @@ struct CoinDetailChartIntervalTests {
                         throw BinanceError.networkError(underlying: URLError(.timedOut))
                     }
                     return sampleKlines
-                }
+                },
+                fetchMarginAccount: {
+                    BinanceMarginAccount(
+                        marginLevel: "0", totalAssetOfBtc: "0",
+                        totalLiabilityOfBtc: "0", totalNetAssetOfBtc: "0",
+                        totalAsset: "0", totalLiability: "0",
+                        totalNetAsset: "0", maxBorrowable: "0",
+                        maintained: nil, userAssets: []
+                    )
+                },
+                fetchMarginMyTrades: { _, _, _ in [] },
+                fetchMarginOpenOrders: { _, _ in [] },
+                fetchMarginAllAssets: { [] },
+                fetchIsolatedMarginTransfers: { _ in [] }
             ),
             priceService: PriceService(fetchPrices: { _ in ["BTCUSDT": 65000.0] }),
             fifoCalculator: .live,
