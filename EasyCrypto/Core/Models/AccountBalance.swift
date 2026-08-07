@@ -19,7 +19,7 @@ final class AccountBalance {
     var asset: String
     var quantity: Double
     var updatedAt: Date
-    var tradingMode: TradingMode
+    var tradingMode: String
 
     init(
         asset: String,
@@ -30,6 +30,9 @@ final class AccountBalance {
         self.asset = asset
         self.quantity = quantity
         self.updatedAt = updatedAt
-        self.tradingMode = tradingMode
+        self.tradingMode = tradingMode.rawValue
+    }
+    var tradingModeEnum: TradingMode {
+        TradingMode(rawValue: tradingMode) ?? .spot
     }
 }

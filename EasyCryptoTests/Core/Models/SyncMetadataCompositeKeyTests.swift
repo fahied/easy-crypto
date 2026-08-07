@@ -43,8 +43,8 @@ struct SyncMetadataCompositeKeyTests {
         let fetched = try context.fetch(descriptor)
         #expect(fetched.count == 3)
 
-        let spotModes = fetched.filter { $0.tradingMode == .spot }
-        let crossModes = fetched.filter { $0.tradingMode == .crossMargin }
+        let spotModes = fetched.filter { $0.tradingModeEnum == .spot }
+        let crossModes = fetched.filter { $0.tradingModeEnum == .crossMargin }
         #expect(spotModes.count == 1)
         #expect(crossModes.count == 1)
     }
@@ -80,7 +80,7 @@ struct SyncMetadataCompositeKeyTests {
         let metadata = SyncMetadata(
             symbol: "ADAUSDT", lastTradeId: 50, lastSyncDate: Date()
         )
-        #expect(metadata.tradingMode == .spot)
+        #expect(metadata.tradingModeEnum == .spot)
 
         context.insert(metadata)
         try context.save()
@@ -88,6 +88,6 @@ struct SyncMetadataCompositeKeyTests {
         let descriptor = FetchDescriptor<SyncMetadata>()
         let fetched = try context.fetch(descriptor)
         let first = try #require(fetched.first)
-        #expect(first.tradingMode == .spot)
+        #expect(first.tradingModeEnum == .spot)
     }
 }

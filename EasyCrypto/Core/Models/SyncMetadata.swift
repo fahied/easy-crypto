@@ -13,7 +13,7 @@ final class SyncMetadata {
     var symbol: String
     var lastTradeId: Int64
     var lastSyncDate: Date
-    var tradingMode: TradingMode
+    var tradingMode: String
 
     init(
         symbol: String,
@@ -24,6 +24,9 @@ final class SyncMetadata {
         self.symbol = symbol
         self.lastTradeId = lastTradeId
         self.lastSyncDate = lastSyncDate
-        self.tradingMode = tradingMode
+        self.tradingMode = tradingMode.rawValue
+    }
+    var tradingModeEnum: TradingMode {
+        TradingMode(rawValue: tradingMode) ?? .spot
     }
 }

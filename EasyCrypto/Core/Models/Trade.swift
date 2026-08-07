@@ -21,7 +21,7 @@ final class Trade {
     var timestamp: Date
     var isBuyer: Bool
     var orderId: Int64
-    var tradingMode: TradingMode
+    var tradingMode: String
 
     init(
         binanceTradeId: Int64,
@@ -48,6 +48,9 @@ final class Trade {
         self.timestamp = timestamp
         self.isBuyer = isBuyer
         self.orderId = orderId
-        self.tradingMode = tradingMode
+        self.tradingMode = tradingMode.rawValue
+    }
+    var tradingModeEnum: TradingMode {
+        TradingMode(rawValue: tradingMode) ?? .spot
     }
 }
