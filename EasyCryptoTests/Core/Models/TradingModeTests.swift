@@ -27,9 +27,10 @@ struct TradingModeTests {
 
     @Test("When compared, then ordering follows rawValue alphabetically")
     func ordering() {
-        #expect(TradingMode.spot < TradingMode.crossMargin)
+        // Raw values: "cross_margin" < "isolated_margin" < "spot"
         #expect(TradingMode.crossMargin < TradingMode.isolatedMargin)
-        #expect(TradingMode.spot < TradingMode.isolatedMargin)
+        #expect(TradingMode.isolatedMargin < TradingMode.spot)
+        #expect(TradingMode.crossMargin < TradingMode.spot)
     }
 
     @Test("When raw values are decoded from JSON, then maps correctly")

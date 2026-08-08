@@ -74,7 +74,7 @@ struct MarginBalanceTests {
         let first = try #require(fetched.first)
         #expect(first.asset == "BTC")
         #expect(first.borrowed == 1.0)
-        #expect(first.netAsset == -0.41)
+        #expect(abs(first.netAsset - -0.41) < 0.0001)
     }
 
     @Test("When unique key differs, then both entries persist")

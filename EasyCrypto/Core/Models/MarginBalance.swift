@@ -43,6 +43,6 @@ final class MarginBalance {
     }
 
     var netAsset: Double {
-        free + locked - borrowed
+        free + locked - borrowed - interest
     }
 }

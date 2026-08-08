@@ -1,19 +1,24 @@
 ---
 advance:
-  id: "ADV-CORE-MODELS-002"
-  title: "Tidy-up: introduce TradingMode abstraction to decouple spot assumptions from core models"
-  system: "easycrypto-core"
-  primary_component: "core-models"
-  components: ["core-models", "core-services"]
-  started_at: "2026-08-07T09:00:00Z"
-  implementation_completed_at: ~
+  id: ADV-CORE-MODELS-002
+  title: 'Tidy-up: introduce TradingMode abstraction to decouple spot assumptions from core models'
+  system: easycrypto-core
+  primary_component: core-models
+  components:
+  - core-models
+  - core-services
+  started_at: 2026-08-07T09:00:00Z
+  started_by: null
+  implementation_completed_at: null
+  implementation_completed_by: null
+  updated_by: null
+  archived_at: null
+  archived_by: null
   review_time_estimate_minutes: 20
-  review_time_actual_minutes: ~
   pr_links: []
   reviewability_score: 0
   risk_flags: []
   evidence: []
-  model_usage: []
   status: planned
 ---
 
@@ -55,54 +60,6 @@ After this advance:
 No computed output (holdings, P&L, alerts, insights) changes — they continue to
 operate on spot data only until the follow-up advances wire margin data in.
 
-## Design Notes
-
-- **Enum, not string**: `TradingMode` is a `String`-backed enum so it's Codable with
-  stable raw values and works in `#Predicate` filters.
-- **Default = spot**: Every new field defaults to `.spot`. SwiftData migrations for
-  existing records apply the default automatically (no manual migration block required
-  because the field is non-optional).
-- **SyncMetadata dual key**: The unique index changes from `symbol` to `(symbol, tradingMode)`.
-  This means a single symbol (e.g., `BTCUSDT`) can have three independent sync cursors:
-  one for spot, one for cross-margin, one for isolated-margin.
-- **MarginBalance lives separately**: It doesn't replace `AccountBalance`; it complements
-  it. Spot balances stay in `AccountBalance`. Isolated-margin balances (which have
-  borrowing semantics) go in `MarginBalance`. Cross-margin has no per-asset balance
-  table — it's a single aggregated account view.
-- **BinanceAPIClient closure extension**: Adding a `tradingMode` parameter to existing
-  closures would break all callers. Instead, the tidy introduces a *parallel* set of
-  closures: `fetchMarginAccount`, `fetchMarginMyTrades`, etc. The original closures
-  remain untouched. The live implementation conditionally dispatches based on a mode
-  parameter when closures are invoked.
-
-## Component Impact
-
-- **core-models** (`EasyCrypto/Core/Models/**`):
-  - New `TradingMode.swift` — enum definition
-  - `Trade.swift` — add `tradingMode` field (default `.spot`)
-  - `AccountBalance.swift` — add `tradingMode` field (default `.spot`)
-  - `SyncMetadata.swift` — add `tradingMode` field; unique key becomes `(symbol, tradingMode)`
-  - New `MarginBalance.swift` — `@Model` for isolated-margin asset balances
-
-- **core-services** (`EasyCrypto/Core/Services/**`):
-  - `BinanceAPIClient.swift` — add margin closure properties (`fetchMarginAccount`,
-    `fetchMarginMyTrades`, `fetchMarginOpenOrders`, `fetchMarginAllAssets`);
-    `live()` populates them with correct endpoint paths
-  - `TradeImportService.swift` — add optional `TradingMode` parameter to `sync`
-    closure; default `nil` → spot
-  - `BalanceService.swift` — add optional `TradingMode` parameter to `fetchBalances`
-    closure; default `nil` → spot
-
-## Out of Scope
-
-- No new user-facing UI for margin mode selection (ADV-SETTINGS-003)
-- No margin trade import yet (ADV-CORE-SERVICES-006)
-- No margin P&L calculation (ADV-CORE-SERVICES-007)
-- No margin balance display in Holdings (ADV-CORE-SERVICES-008, ADV-PORTFOLIO-002)
-- No margin trade history (ADV-TRADE-HISTORY-001)
-- No background margin refresh (ADV-APP-SHELL-002)
-- No migration block — defaults handle it
-
 ## Planned Implementation Tasks
 
 - [ ] test: TradingMode enum codable round-trip; predicate filtering by mode
@@ -120,9 +77,16 @@ operate on spot data only until the follow-up advances wire margin data in.
 - [ ] tidy: add optional `TradingMode` parameter to `TradeImportService.sync`
 - [ ] tidy: add optional `TradingMode` parameter to `BalanceService.fetchBalances`
 
-## Bug Fixes
+## Check for Understanding
 
-- [ ] None — tidy-only advance
+1. Why does `TradingMode` use a `String`-backed enum instead of a plain enum or string property?
+2. How does the composite unique key `(symbol, tradingMode)` on `SyncMetadata` allow
+   the same symbol to have independent sync cursors for spot, cross-margin, and
+   isolated-margin trades?
+3. Why does this advance add `MarginBalance` as a separate model instead of extending
+   `AccountBalance` with optional margin fields?
+4. How does adding optional `TradingMode` parameters to `TradeImportService` and
+   `BalanceService` preserve backward compatibility with existing callers?
 
 ## Risk + Rollback
 
@@ -142,25 +106,24 @@ operate on spot data only until the follow-up advances wire margin data in.
 - [ ] tidy:preparatory
 - [ ] tests:unit (TradingModeTests, MarginBalanceTests, SyncMetadataCompositeKeyTests)
 
-## CI Evidence Notes
-
-- If CI jobs are enabled, link pipeline evidence (`ci:passed`) from PR/MR and
-  default-branch runs.
-- If CI jobs are temporarily disabled, run checks externally before merge:
-  - `arrive pr check --strict --json`
-  - `arrive evidence record --advance ADV-CORE-MODELS-002 --status passed`
-
 ## Changes Made
 
-*(populated during implementation)*
+### 2026-08-08: MarginBalance.netAsset now deducts interest; fix TradingMode ordering test to match rawValue sort
 
-## Check for Understanding
+**fix**
 
-1. Why does `TradingMode` use a `String`-backed enum instead of a plain enum or string property?
-2. How does the composite unique key `(symbol, tradingMode)` on `SyncMetadata` allow
-   the same symbol to have independent sync cursors for spot, cross-margin, and
-   isolated-margin trades?
-3. Why does this advance add `MarginBalance` as a separate model instead of extending
-   `AccountBalance` with optional margin fields?
-4. How does adding optional `TradingMode` parameters to `TradeImportService` and
-   `BalanceService` preserve backward compatibility with existing callers?
+- `EasyCrypto/Core/Models/MarginBalance.swift`: Modified
+- `EasyCrypto/Core/Services/BinanceAPIClient.swift`: Modified
+- `EasyCryptoTests/Core/Models/MarginBalanceTests.swift`: Modified
+- `EasyCryptoTests/Core/Models/TradingModeTests.swift`: Modified
+- `EasyCryptoTests/Core/Services/BinanceMarginAPITests.swift`: Modified
+- `EasyCryptoTests/Core/Services/PriceServiceTests.swift`: Modified
+- `EasyCryptoTests/Core/Services/TradeImportServiceTests.swift`: Modified
+- `arrive/systems/easycrypto-core/advances/ADV-CORE-SERVICES-005.md`: Modified
+- `arrive/systems/easycrypto-core/advances/ADV-CORE-SERVICES-006.md`: Modified
+- `arrive/systems/easycrypto-core/advances/ADV-CORE-SERVICES-007.md`: Modified
+- `arrive/systems/easycrypto-core/advances/ADV-CORE-SERVICES-008.md`: Modified
+- `docs/1.project-overview.md`: Modified
+- `EasyCrypto/Core/Services/MarginTradeImportService.swift`: Added
+- `EasyCryptoTests/Core/Services/MarginTradeImportServiceTests.swift`: Added
+
