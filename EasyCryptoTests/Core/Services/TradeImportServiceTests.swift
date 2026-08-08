@@ -30,7 +30,8 @@ private func makeBinanceTrade(
     )
 }
 
-private func makeBalance(_ asset: String) -> BinanceBalance {
+// used by MarginTradeImportServiceTests.swift too, so not `private`
+func makeBalance(_ asset: String) -> BinanceBalance {
     BinanceBalance(asset: asset, free: "1.0", locked: "0")
 }
 
@@ -515,6 +516,9 @@ struct RateLimitRetryTests {
         let client = BinanceAPIClient(
             fetchAccount: { [makeBalance("BTC")] },
             fetchMyTrades: { symbol, _ in
+                // Only BTCUSDT is under test; bootstrap-tracked assets (SOL/IOTX/BNB)
+                // are also synced but have no trades here.
+                guard symbol == "BTCUSDT" else { return [] }
                 callCount.value += 1
                 if callCount.value == 1 {
                     throw BinanceError.rateLimited(retryAfterSeconds: nil)
@@ -592,6 +596,10 @@ struct RateLimitRetryTests {
                         throw BinanceError.rateLimited(retryAfterSeconds: nil)
                     }
                     return [makeBinanceTrade(id: 1, symbol: symbol)]
+                }
+                guard symbol == "ETHUSDT" else {
+                    // Bootstrap-tracked assets (SOL/IOTX/BNB) are also synced but have no trades here.
+                    return []
                 }
                 return [makeBinanceTrade(id: 2, symbol: symbol)]
             },
