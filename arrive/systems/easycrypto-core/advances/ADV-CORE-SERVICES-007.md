@@ -20,9 +20,12 @@ advance:
 ## Objective
 
 Add a `MarginBalanceService` that calls the margin API endpoints (`fetchMarginAccount`
-for cross-margin, `fetchMarginAllAssets` and `fetchIsolatedMarginTransfers` for
-isolated-margin) to produce a unified balance view. This service feeds the Holdings
-tab's margin mode (ADV-PORTFOLIO-002) and the Settings margin overview (ADV-SETTINGS-003).
+for cross-margin, `fetchIsolatedMarginAccount` and `fetchMarginAllAssets` /
+`fetchIsolatedMarginTransfers` for isolated-margin) to produce a unified balance view
+— including the per-asset borrowing interest that feeds margin-adjusted P&L
+(ADV-CORE-SERVICES-008) and the isolated liquidation price shown in Holdings
+(ADV-PORTFOLIO-002). This service feeds the Holdings tab's margin mode
+(ADV-PORTFOLIO-002) and the Settings margin overview (ADV-SETTINGS-003).
 Depends on ADV-CORE-SERVICES-005 (margin API endpoints) and ADV-CORE-MODELS-002 (TradingMode).
 
 ## Behavioral Change
@@ -31,33 +34,48 @@ After this advance:
 
 - New `MarginBalanceService` (struct-with-closures) exposes:
   - `fetchCrossMarginAccount` closure: returns `CrossMarginAccountData` (total assets,
-    total liabilities, net asset, margin level, max borrow per asset)
+    total liabilities, net asset, margin level, max borrow per asset, **and
+    `perAssetInterest: [String: Double]` derived from the `userAssets` array — the
+    data source `calculateMargin`'s `borrowingFees` input uses for cross-margin**)
   - `fetchIsolatedMarginBalances` closure: returns `[IsolatedMarginBalance]` (per-asset
-    borrowed, free, locked, interest for a given isolated symbol)
-- The service dispatches to `fetchMarginAccount` or `fetchMarginAllAssets` /
-  `fetchIsolatedMarginTransfers` from `BinanceAPIClient` based on the `TradingMode`.
-- Cross-margin data is a single aggregated snapshot (no per-asset breakdown from the API).
-- Isolated-margin data is per-isolated-symbol; the service iterates known isolated symbols
-  and aggregates results.
+    borrowed, free, locked, interest, **plus `liquidationPrice: Double?` and
+    `marginLevel: Double?` sourced from `fetchIsolatedMarginAccount`**) for a given
+    isolated symbol
+- The service dispatches to `fetchMarginAccount`, `fetchIsolatedMarginAccount`, or
+  `fetchMarginAllAssets` / `fetchIsolatedMarginTransfers` from `BinanceAPIClient` based
+  on the `TradingMode`.
+- Cross-margin data is a single aggregated snapshot, but now includes the per-asset
+  `userAssets` breakdown needed for interest attribution (no separate call required).
+- Isolated-margin data is per-isolated-symbol; the service calls `fetchIsolatedMarginAccount`
+  (batched, up to 5 symbols per call per Binance's limit) for liquidation price + margin
+  level, and merges it with `fetchMarginAllAssets` for borrowed/free/locked/interest.
 - Preview and noop variants return empty/default data structures.
 - Errors are propagated with contextual messages (e.g., "cross-margin account fetch failed").
 
 ## Design Notes
 
 - **Cross-margin is a single call**: `/sapi/v1/margin/account` returns one JSON object
-  with all cross-margin metrics. No pagination needed.
+  with all cross-margin metrics, including the `userAssets` array `CrossMarginAccountData`
+  maps into `perAssetInterest`. No pagination needed.
+- **Isolated-margin liquidation price + margin level come from `fetchIsolatedMarginAccount`**:
+  `/sapi/v1/margin/isolated/account` (ADV-CORE-SERVICES-005) is the only Binance endpoint
+  that returns `liquidatePrice` per isolated pair; `fetchMarginAllAssets` alone does not.
+  The service merges both responses into one `IsolatedMarginBalance` per symbol.
 - **Isolated-margin requires iteration**: `/sapi/v1/margin/allAssets` returns all isolated
-  margin assets in one call. `/sapi/v1/margin/transfer` is per-isolated-symbol but
-  `allAssets` already covers the balance view, so the service uses it as the primary
-  source and falls back to per-symbol transfer history only when needed for interest data.
+  margin assets in one call for borrowed/free/locked. `/sapi/v1/margin/transfer` is
+  per-isolated-symbol but `allAssets` already covers the balance view, so the service uses
+  it as the primary source and falls back to per-symbol transfer history only when needed.
 - **No persistent model needed**: Cross-margin data is a computed snapshot (like spot
   balances via `fetchBalances`). Isolated-margin per-asset balances persist to the
-  existing `MarginBalance` SwiftData model (introduced in ADV-CORE-MODELS-002).
+  existing `MarginBalance` SwiftData model (introduced in ADV-CORE-MODELS-002); the
+  fetched `liquidationPrice`/`marginLevel` are refreshed on each sync, not persisted
+  (they're point-in-time risk metrics, not cost-basis data).
 - **Response types**: New value types `CrossMarginAccountData` and `IsolatedMarginBalance`
   are pure structs, not `@Model`. They mirror the DTOs from the API client but expose
   domain-friendly computed properties (e.g., `netAsset`, `marginRatio`).
 - **Rate limits**: `fetchMarginAllAssets` is a single endpoint call. The service batches
-  per-isolated-symbol transfer fetches with a small delay between calls.
+  per-isolated-symbol `fetchIsolatedMarginAccount` and transfer fetches with a small delay
+  between calls.
 
 ## Component Impact
 
@@ -69,23 +87,29 @@ After this advance:
 
 ## Out of Scope
 
-- Margin P&L calculation (ADV-CORE-SERVICES-008)
+- Margin P&L calculation (ADV-CORE-SERVICES-008) — this service supplies
+  `perAssetInterest`/per-asset `interest` as raw inputs; it does not deduct them from P&L
 - Margin loan/repay (not planned — read-only)
-- Margin interest rate fetching (not planned)
+- Isolated-margin interest **APR/rate** fetching (not planned — only accrued interest
+  **amounts**, already covered by `fetchMarginAccount`/`fetchIsolatedMarginAccount`)
 - Margin balance display in Holdings (ADV-PORTFOLIO-002)
 - Background margin refresh (ADV-APP-SHELL-002)
 
 ## Planned Implementation Tasks
 
-- [ ] test: `fetchCrossMarginAccount` DTO decodes correctly from sample JSON
-- [ ] test: `fetchIsolatedMarginBalances` aggregates per-symbol data correctly
+- [ ] test: `fetchCrossMarginAccount` DTO decodes correctly from sample JSON, and
+      `perAssetInterest` is correctly derived from `userAssets`
+- [ ] test: `fetchIsolatedMarginBalances` aggregates per-symbol data correctly, merging
+      `fetchIsolatedMarginAccount` (`liquidationPrice`, `marginLevel`) with
+      `fetchMarginAllAssets` (borrowed/free/locked/interest)
 - [ ] test: preview/noop variants return empty/default data
 - [ ] test: `.spot` mode throws `.invalidMode`
-- [ ] tidy: add `CrossMarginAccountData` value type
-- [ ] tidy: add `IsolatedMarginBalance` value type
+- [ ] tidy: add `CrossMarginAccountData` value type (incl. `perAssetInterest`)
+- [ ] tidy: add `IsolatedMarginBalance` value type (incl. `liquidationPrice`, `marginLevel`)
 - [ ] tidy: add `MarginBalanceService` struct with `fetchCrossMarginAccount` and
       `fetchIsolatedMarginBalances` closures
-- [ ] tidy: implement `live()` dispatching to correct `BinanceAPIClient` margin closures
+- [ ] tidy: implement `live()` dispatching to correct `BinanceAPIClient` margin closures,
+      merging `fetchIsolatedMarginAccount` + `fetchMarginAllAssets` for isolated symbols
 
 ## Bug Fixes
 
@@ -100,7 +124,7 @@ After this advance:
 
 - [ ] tidy:preparatory
 - [ ] tdd:red-green
-- [ ] tests:unit (MarginBalanceServiceTests — target 5 tests)
+- [ ] tests:unit (MarginBalanceServiceTests — target 7 tests)
 
 ## CI Evidence Notes
 

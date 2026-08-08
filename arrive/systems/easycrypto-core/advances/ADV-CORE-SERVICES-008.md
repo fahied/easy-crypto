@@ -47,7 +47,9 @@ After this advance:
   borrowing costs that must be deducted from realized P&L.
 - **Borrowing fees are per-asset**: Binance reports margin interest per asset. The
   `borrowingFees` parameter is `[String: Double]` keyed by asset, matching the
-  `FIFOTrade.asset` field.
+  `FIFOTrade.asset` field. For cross-margin, the caller sources this from
+  `CrossMarginAccountData.perAssetInterest`; for isolated-margin, from
+  `IsolatedMarginBalance.interest` (both from ADV-CORE-SERVICES-007).
 - **Separation of concerns**: `FIFOCalculator` computes P&L; the caller (PortfolioProcessor)
   is responsible for fetching borrowing fees from `MarginBalanceService`. This keeps
   the calculator pure and testable.
@@ -63,7 +65,9 @@ After this advance:
 
 ## Out of Scope
 
-- Margin liquidation price calculation (not planned)
+- Margin liquidation price — fetched directly from Binance's isolated-margin account
+  endpoint (`fetchIsolatedMarginAccount`, ADV-CORE-SERVICES-005/007) and surfaced via
+  `IsolatedMarginBalance.liquidationPrice`; `FIFOCalculator` does not compute it
 - Cross-margin vs isolated-margin P&L differentiation beyond fee attribution
 - Margin leverage impact on cost basis (assumes 1x for FIFO)
 - Margin UI display (ADV-DESIGN-SYSTEM-001, ADV-TRADE-HISTORY-001)

@@ -93,6 +93,46 @@ nonisolated struct BinanceMarginAccount: Sendable, Codable {
     let userAssets: [AssetEntry]
 }
 
+/// GET /sapi/v1/margin/isolated/account — per-isolated-symbol account overview.
+/// Source of `liquidatePrice`, the only place Binance reports isolated-margin liquidation risk.
+nonisolated struct BinanceIsolatedMarginAccount: Sendable, Codable {
+    struct AssetDetail: Sendable, Codable {
+        let asset: String
+        let borrowed: String
+        let free: String
+        let locked: String
+        let interest: String
+        let netAsset: String
+    }
+
+    struct IsolatedPair: Sendable, Codable, Identifiable {
+        let symbol: String
+        let marginLevel: String
+        let marginRatio: String
+        let indexPrice: String
+        let liquidatePrice: String
+        let liquidateRate: String
+        let tradeEnabled: Bool
+        let enabled: Bool
+        let baseAsset: AssetDetail
+        let quoteAsset: AssetDetail
+
+        var id: String { symbol }
+    }
+
+    let assets: [IsolatedPair]
+    let totalAssetOfBtc: String
+    let totalLiabilityOfBtc: String
+    let totalNetAssetOfBtc: String
+
+    static let empty = BinanceIsolatedMarginAccount(
+        assets: [],
+        totalAssetOfBtc: "0",
+        totalLiabilityOfBtc: "0",
+        totalNetAssetOfBtc: "0"
+    )
+}
+
 /// GET /sapi/v1/margin/allAssets — all margin assets summary.
 nonisolated struct BinanceMarginAsset: Sendable, Codable, Identifiable {
     let asset: String
@@ -335,6 +375,7 @@ nonisolated struct BinanceAPIClient: Sendable {
 
     // MARK: - Margin Closures
     var fetchMarginAccount: @Sendable () async throws -> BinanceMarginAccount
+    var fetchIsolatedMarginAccount: @Sendable (_ symbols: [String]) async throws -> BinanceIsolatedMarginAccount
     var fetchMarginMyTrades: @Sendable (_ symbol: String, _ fromId: Int64?, _ isIsolated: Bool) async throws -> [BinanceMarginTrade]
     var fetchMarginOpenOrders: @Sendable (_ symbol: String, _ isIsolated: Bool) async throws -> [BinanceMarginOrder]
     var fetchMarginAllAssets: @Sendable () async throws -> [BinanceMarginAsset]
@@ -346,6 +387,8 @@ nonisolated struct BinanceAPIClient: Sendable {
         fetchTickerPrices: @escaping @Sendable (_ symbols: [String]) async throws -> [BinanceTickerPrice],
         fetchKlines: @escaping @Sendable (_ symbol: String, _ interval: String, _ limit: Int) async throws -> [Kline],
         fetchMarginAccount: @escaping @Sendable () async throws -> BinanceMarginAccount,
+        // Defaulted: predates this closure, existing call sites don't need updating (ADV-CORE-SERVICES-005).
+        fetchIsolatedMarginAccount: @escaping @Sendable (_ symbols: [String]) async throws -> BinanceIsolatedMarginAccount = { _ in .empty },
         fetchMarginMyTrades: @escaping @Sendable (_ symbol: String, _ fromId: Int64?, _ isIsolated: Bool) async throws -> [BinanceMarginTrade],
         fetchMarginOpenOrders: @escaping @Sendable (_ symbol: String, _ isIsolated: Bool) async throws -> [BinanceMarginOrder],
         fetchMarginAllAssets: @escaping @Sendable () async throws -> [BinanceMarginAsset],
@@ -356,6 +399,7 @@ nonisolated struct BinanceAPIClient: Sendable {
         self.fetchTickerPrices = fetchTickerPrices
         self.fetchKlines = fetchKlines
         self.fetchMarginAccount = fetchMarginAccount
+        self.fetchIsolatedMarginAccount = fetchIsolatedMarginAccount
         self.fetchMarginMyTrades = fetchMarginMyTrades
         self.fetchMarginOpenOrders = fetchMarginOpenOrders
         self.fetchMarginAllAssets = fetchMarginAllAssets
@@ -571,6 +615,46 @@ extension BinanceAPIClient {
                     throw BinanceError.decodingError(underlying: error)
                 }
             },
+            fetchIsolatedMarginAccount: { symbols in
+                guard let credentials = try keychain.load() else {
+                    throw BinanceError.noCredentialsConfigured
+                }
+                let timestamp = await timeSynchronizer.adjustedTimestamp()
+                var params: [(String, String)] = []
+                if !symbols.isEmpty {
+                    params.append(("symbols", symbols.joined(separator: ",")))
+                }
+                guard let url = BinanceURLBuilder.buildSignedURL(
+                    path: "/sapi/v1/margin/isolated/account",
+                    params: params,
+                    secret: credentials.secret,
+                    timestamp: timestamp
+                ) else {
+                    throw BinanceError.networkError(underlying: URLError(.badURL))
+                }
+                var request = URLRequest(url: url)
+                request.setValue(credentials.apiKey, forHTTPHeaderField: "X-MBX-APIKEY")
+
+                logger.debug("Fetching isolated margin account for \(symbols.joined(separator: ","))")
+                let (data, response) = try await session.data(for: request)
+                let validData = try BinanceResponseMapper.mapResponse(
+                    data: data,
+                    response: response
+                )
+                BinanceDebugLogger.logJSONResponse(
+                    validData,
+                    endpoint: "/sapi/v1/margin/isolated/account",
+                    logger: logger
+                )
+                do {
+                    return try JSONDecoder().decode(
+                        BinanceIsolatedMarginAccount.self,
+                        from: validData
+                    )
+                } catch {
+                    throw BinanceError.decodingError(underlying: error)
+                }
+            },
             fetchMarginMyTrades: { symbol, fromId, isIsolated in
                 guard let credentials = try keychain.load() else {
                     throw BinanceError.noCredentialsConfigured
@@ -766,6 +850,33 @@ extension BinanceAPIClient {
                 ]
             )
         },
+        fetchIsolatedMarginAccount: { _ in
+            BinanceIsolatedMarginAccount(
+                assets: [
+                    BinanceIsolatedMarginAccount.IsolatedPair(
+                        symbol: "BTCUSDT",
+                        marginLevel: "3.5",
+                        marginRatio: "0.15",
+                        indexPrice: "65000",
+                        liquidatePrice: "45230",
+                        liquidateRate: "1.0",
+                        tradeEnabled: true,
+                        enabled: true,
+                        baseAsset: BinanceIsolatedMarginAccount.AssetDetail(
+                            asset: "BTC", borrowed: "0.1", free: "0.5",
+                            locked: "0", interest: "0.001", netAsset: "0.4"
+                        ),
+                        quoteAsset: BinanceIsolatedMarginAccount.AssetDetail(
+                            asset: "USDT", borrowed: "0", free: "1000",
+                            locked: "0", interest: "0", netAsset: "1000"
+                        )
+                    ),
+                ],
+                totalAssetOfBtc: "0.9",
+                totalLiabilityOfBtc: "0.1",
+                totalNetAssetOfBtc: "0.8"
+            )
+        },
         fetchMarginMyTrades: { _, _, _ in [
             BinanceMarginTrade(
                 id: 1, symbol: "BTCUSDT", price: "50000", qty: "0.5",
@@ -811,6 +922,7 @@ extension BinanceAPIClient {
                 userAssets: []
             )
         },
+        fetchIsolatedMarginAccount: { _ in .empty },
         fetchMarginMyTrades: { _, _, _ in [] },
         fetchMarginOpenOrders: { _, _ in [] },
         fetchMarginAllAssets: { [] },

@@ -14,6 +14,7 @@ struct LiveMarginAPITests {
 
     private func makeLiveClient(
         marginAccount: BinanceMarginAccount? = nil,
+        isolatedAccount: BinanceIsolatedMarginAccount? = nil,
         marginTrades: [BinanceMarginTrade] = [],
         marginOrders: [BinanceMarginOrder] = [],
         marginAssets: [BinanceMarginAsset] = [],
@@ -52,6 +53,36 @@ struct LiveMarginAPITests {
                             netAssetOfBtc: "0.076", maxBorrowable: "10000"
                         ),
                     ]
+                )
+            },
+            fetchIsolatedMarginAccount: { _ in
+                if let isolatedAccount {
+                    return isolatedAccount
+                }
+                return BinanceIsolatedMarginAccount(
+                    assets: [
+                        BinanceIsolatedMarginAccount.IsolatedPair(
+                            symbol: "BTCUSDT",
+                            marginLevel: "3.2",
+                            marginRatio: "0.18",
+                            indexPrice: "62000",
+                            liquidatePrice: "45230",
+                            liquidateRate: "1.0",
+                            tradeEnabled: true,
+                            enabled: true,
+                            baseAsset: BinanceIsolatedMarginAccount.AssetDetail(
+                                asset: "BTC", borrowed: "0.1", free: "0.4",
+                                locked: "0", interest: "0.001", netAsset: "0.3"
+                            ),
+                            quoteAsset: BinanceIsolatedMarginAccount.AssetDetail(
+                                asset: "USDT", borrowed: "0", free: "500",
+                                locked: "0", interest: "0", netAsset: "500"
+                            )
+                        ),
+                    ],
+                    totalAssetOfBtc: "0.7",
+                    totalLiabilityOfBtc: "0.1",
+                    totalNetAssetOfBtc: "0.6"
                 )
             },
             fetchMarginMyTrades: { _, _, _ in marginTrades },
@@ -96,6 +127,22 @@ struct LiveMarginAPITests {
         #expect(usdt.free == "10000")
         #expect(usdt.locked == "0")
         #expect(usdt.interest == "50")
+    }
+
+    // MARK: fetchIsolatedMarginAccount
+
+    @Test("When fetchIsolatedMarginAccount succeeds, then returns liquidation price and margin level per symbol")
+    func fetchIsolatedMarginAccountReturnsSnapshot() async throws {
+        let client = makeLiveClient()
+        let account = try await client.fetchIsolatedMarginAccount(["BTCUSDT"])
+
+        #expect(account.assets.count == 1)
+        let pair = try #require(account.assets.first { $0.symbol == "BTCUSDT" })
+        #expect(pair.liquidatePrice == "45230")
+        #expect(pair.marginLevel == "3.2")
+        #expect(pair.baseAsset.asset == "BTC")
+        #expect(pair.baseAsset.borrowed == "0.1")
+        #expect(pair.quoteAsset.asset == "USDT")
     }
 
     // MARK: fetchMarginMyTrades
@@ -249,6 +296,45 @@ struct LiveMarginAPITests {
             Issue.record("Unexpected error type: \(error)")
         }
     }
+
+    @Test("When fetchIsolatedMarginAccount throws, then error propagates")
+    func isolatedMarginAccountErrorPropagates() async {
+        let client = BinanceAPIClient(
+            fetchAccount: { [] },
+            fetchMyTrades: { _, _ in [] },
+            fetchTickerPrices: { _ in [] },
+            fetchKlines: { _, _, _ in [] },
+            fetchMarginAccount: {
+                BinanceMarginAccount(
+                    marginLevel: "0", totalAssetOfBtc: "0",
+                    totalLiabilityOfBtc: "0", totalNetAssetOfBtc: "0",
+                    totalAsset: "0", totalLiability: "0",
+                    totalNetAsset: "0", maxBorrowable: "0",
+                    maintained: nil, userAssets: []
+                )
+            },
+            fetchIsolatedMarginAccount: { _ in
+                throw BinanceError.networkError(underlying: URLError(.notConnectedToInternet))
+            },
+            fetchMarginMyTrades: { _, _, _ in [] },
+            fetchMarginOpenOrders: { _, _ in [] },
+            fetchMarginAllAssets: { [] },
+            fetchIsolatedMarginTransfers: { _ in [] }
+        )
+
+        do {
+            _ = try await client.fetchIsolatedMarginAccount(["BTCUSDT"])
+            Issue.record("Expected error to propagate")
+        } catch let error as BinanceError {
+            if case .networkError = error {
+                // expected
+            } else {
+                Issue.record("Expected networkError but got \(error)")
+            }
+        } catch {
+            Issue.record("Unexpected error type: \(error)")
+        }
+    }
 }
 
 // MARK: - Given a preview BinanceAPIClient
@@ -262,6 +348,14 @@ struct PreviewMarginAPITests {
         #expect(account.marginLevel == "1.5")
         #expect(account.userAssets.count == 1)
         #expect(account.userAssets.first?.asset == "BTC")
+    }
+
+    @Test("Then fetchIsolatedMarginAccount returns sample data with a liquidation price")
+    func previewFetchIsolatedMarginAccount() async throws {
+        let account = try await BinanceAPIClient.preview.fetchIsolatedMarginAccount(["BTCUSDT"])
+        #expect(account.assets.count == 1)
+        #expect(account.assets.first?.symbol == "BTCUSDT")
+        #expect(account.assets.first?.liquidatePrice == "45230")
     }
 
     @Test("Then fetchMarginMyTrades returns sample data")
@@ -303,6 +397,12 @@ struct NoopMarginAPITests {
         let account = try await BinanceAPIClient.noop.fetchMarginAccount()
         #expect(account.marginLevel == "0")
         #expect(account.userAssets.isEmpty)
+    }
+
+    @Test("Then fetchIsolatedMarginAccount returns empty")
+    func noopFetchIsolatedMarginAccount() async throws {
+        let account = try await BinanceAPIClient.noop.fetchIsolatedMarginAccount(["BTCUSDT"])
+        #expect(account.assets.isEmpty)
     }
 
     @Test("Then fetchMarginMyTrades returns empty")
