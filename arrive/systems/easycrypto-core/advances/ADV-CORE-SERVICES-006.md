@@ -19,7 +19,7 @@ advance:
   reviewability_score: 0
   risk_flags: []
   evidence: []
-  status: planned
+  status: complete
 ---
 
 ## Objective

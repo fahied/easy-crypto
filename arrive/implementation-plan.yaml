@@ -1,0 +1,189 @@
+schema_version: 1
+metadata:
+  created_at: 2026-08-08T04:40:25.531410Z
+  updated_at: 2026-08-08T04:40:25.531410Z
+  generated_by: arrive plan init
+passes:
+- id: pass-1
+  title: Initial Pass
+  order: 1
+  phases:
+  - id: phase-1
+    title: Primary Sequence
+    order: 1
+    items:
+    - id: ADV-AI-INSIGHTS-001
+      advance_id: ADV-AI-INSIGHTS-001
+      title: 'AI insights pt.1: persistence models + deterministic trade-pattern summarizer'
+      status: done
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-AI-INSIGHTS-002
+      advance_id: ADV-AI-INSIGHTS-002
+      title: 'AI insights pt.2: on-device Foundation Models engine (guided generation)'
+      status: done
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-AI-INSIGHTS-003
+      advance_id: ADV-AI-INSIGHTS-003
+      title: 'AI insights pt.3: Insights MVI surface + view + settings toggle'
+      status: done
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-AI-INSIGHTS-004
+      advance_id: ADV-AI-INSIGHTS-004
+      title: 'AI insights pt.4: 4-hour background refresher + app wiring'
+      status: done
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-AI-INSIGHTS-005
+      advance_id: ADV-AI-INSIGHTS-005
+      title: 'AI insights pt.5: conversational chat with the on-device model in Insights'
+      status: done
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-AI-INSIGHTS-006
+      advance_id: ADV-AI-INSIGHTS-006
+      title: Profit breakdown card at top of Insights tab with auto-refresh on tab open
+      status: done
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-APP-SHELL-001
+      advance_id: ADV-APP-SHELL-001
+      title: Background refresh task to run price-alert checks (~5 min)
+      status: done
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-APP-SHELL-002
+      advance_id: ADV-APP-SHELL-002
+      title: Background margin refresh — margin balance sync and margin price alerts
+      status: planned
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-CORE-MODELS-001
+      advance_id: ADV-CORE-MODELS-001
+      title: Price alert configuration & profit baseline model
+      status: done
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-CORE-MODELS-002
+      advance_id: ADV-CORE-MODELS-002
+      title: 'Tidy-up: introduce TradingMode abstraction to decouple spot assumptions from core models'
+      status: planned
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-CORE-SERVICES-001
+      advance_id: ADV-CORE-SERVICES-001
+      title: Notification & price-alert services (profit-threshold detection)
+      status: done
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-CORE-SERVICES-002
+      advance_id: ADV-CORE-SERVICES-002
+      title: 'Loss alerts: notify when an asset''s profit drops by the threshold'
+      status: done
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-CORE-SERVICES-003
+      advance_id: ADV-CORE-SERVICES-003
+      title: 'Percent move alerts: notify when a coin''s price moves ±5%'
+      status: done
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-CORE-SERVICES-004
+      advance_id: ADV-CORE-SERVICES-004
+      title: 'Hourly candle-drop alert: notify on 2 consecutive falling 15m candles'
+      status: done
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-CORE-SERVICES-005
+      advance_id: ADV-CORE-SERVICES-005
+      title: Add Binance margin REST API endpoints to BinanceAPIClient
+      status: done
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-CORE-SERVICES-006
+      advance_id: ADV-CORE-SERVICES-006
+      title: Margin trade import service — cross-margin and isolated-margin incremental sync
+      status: done
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-CORE-SERVICES-007
+      advance_id: ADV-CORE-SERVICES-007
+      title: Margin balance aggregation service — cross-margin overview and isolated-margin per-asset balances
+      status: done
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-CORE-SERVICES-008
+      advance_id: ADV-CORE-SERVICES-008
+      title: Margin-aware FIFO calculator — borrowing costs and margin-adjusted P&L
+      status: planned
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-DESIGN-SYSTEM-001
+      advance_id: ADV-DESIGN-SYSTEM-001
+      title: Margin P&L display components — GlassCard variants for margin positions
+      status: planned
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-PORTFOLIO-001
+      advance_id: ADV-PORTFOLIO-001
+      title: 'Holdings match Binance: use account balances as authoritative quantity'
+      status: done
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-PORTFOLIO-002
+      advance_id: ADV-PORTFOLIO-002
+      title: Portfolio Holdings with margin mode — unified view across spot, cross-margin, and isolated-margin
+      status: planned
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-SETTINGS-001
+      advance_id: ADV-SETTINGS-001
+      title: Settings UI for price alerts (permission, per-asset toggle, threshold)
+      status: done
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-SETTINGS-002
+      advance_id: ADV-SETTINGS-002
+      title: 'Notification log: persist fired alerts and browse them from Settings'
+      status: done
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-SETTINGS-003
+      advance_id: ADV-SETTINGS-003
+      title: Settings UI for trading mode selection — spot, cross-margin, and isolated-margin toggle
+      status: planned
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-TRADE-HISTORY-001
+      advance_id: ADV-TRADE-HISTORY-001
+      title: Margin trade history — filterable by trading mode with borrowing fee display
+      status: planned
+      owner: null
+      dependencies: []
+      notes: null

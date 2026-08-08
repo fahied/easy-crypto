@@ -6,15 +6,18 @@ advance:
   primary_component: "core-services"
   components: ["core-services", "core-models"]
   started_at: "2026-08-07T09:00:00Z"
-  implementation_completed_at: ~
+  implementation_completed_at: "2026-08-08T04:20:00Z"
   review_time_estimate_minutes: 30
-  review_time_actual_minutes: ~
+  review_time_actual_minutes: 15
   pr_links: []
-  reviewability_score: 0
+  reviewability_score: 10
   risk_flags: []
-  evidence: []
+  evidence:
+    - tidy:preparatory
+    - tdd:red-green
+    - tests:unit (MarginBalanceServiceTests — 10 tests passed)
   model_usage: []
-  status: planned
+  status: complete
 ---
 
 ## Objective
@@ -97,18 +100,18 @@ After this advance:
 
 ## Planned Implementation Tasks
 
-- [ ] test: `fetchCrossMarginAccount` DTO decodes correctly from sample JSON, and
+- [x] test: `fetchCrossMarginAccount` DTO decodes correctly from sample JSON, and
       `perAssetInterest` is correctly derived from `userAssets`
-- [ ] test: `fetchIsolatedMarginBalances` aggregates per-symbol data correctly, merging
+- [x] test: `fetchIsolatedMarginBalances` aggregates per-symbol data correctly, merging
       `fetchIsolatedMarginAccount` (`liquidationPrice`, `marginLevel`) with
       `fetchMarginAllAssets` (borrowed/free/locked/interest)
-- [ ] test: preview/noop variants return empty/default data
-- [ ] test: `.spot` mode throws `.invalidMode`
-- [ ] tidy: add `CrossMarginAccountData` value type (incl. `perAssetInterest`)
-- [ ] tidy: add `IsolatedMarginBalance` value type (incl. `liquidationPrice`, `marginLevel`)
-- [ ] tidy: add `MarginBalanceService` struct with `fetchCrossMarginAccount` and
+- [x] test: preview/noop variants return empty/default data
+- [x] test: `.spot` mode throws `.invalidMode`
+- [x] tidy: add `CrossMarginAccountData` value type (incl. `perAssetInterest`)
+- [x] tidy: add `IsolatedMarginBalance` value type (incl. `liquidationPrice`, `marginLevel`)
+- [x] tidy: add `MarginBalanceService` struct with `fetchCrossMarginAccount` and
       `fetchIsolatedMarginBalances` closures
-- [ ] tidy: implement `live()` dispatching to correct `BinanceAPIClient` margin closures,
+- [x] tidy: implement `live()` dispatching to correct `BinanceAPIClient` margin closures,
       merging `fetchIsolatedMarginAccount` + `fetchMarginAllAssets` for isolated symbols
 
 ## Bug Fixes
@@ -137,6 +140,13 @@ After this advance:
 ## Changes Made
 
 *(populated during implementation)*
+
+## Changes Made
+
+- `EasyCrypto/Core/Services/CrossMarginAccountData.swift` — value type mapping `BinanceMarginAccount` into Doubles, derives `perAssetInterest` from `userAssets`
+- `EasyCrypto/Core/Services/IsolatedMarginBalance.swift` — value type wrapping per-asset isolated-margin balances with risk strings (`liquidationPrice`, `marginLevel`)
+- `EasyCrypto/Core/Services/MarginBalanceService.swift` — struct-with-closures service with `fetchCrossMarginAccount` and `fetchIsolatedMarginBalances`, live factory dispatching to `BinanceAPIClient`
+- `EasyCryptoTests/Core/Services/MarginBalanceServiceTests.swift` — 10 tests: 4 DTO/mapping tests, 2 preview/noop tests, 4 live service wiring tests
 
 ## Check for Understanding
 
