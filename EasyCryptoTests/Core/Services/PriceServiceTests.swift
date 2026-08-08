@@ -110,8 +110,8 @@ struct LivePriceServiceTests {
         #expect(prices["BADUSDT"] == nil)
     }
 
-    @Test("When API throws, then error propagates")
-    func errorPropagates() async {
+    @Test("When API throws, then result degrades to empty rather than propagating")
+    func errorDegradesToEmpty() async throws {
         let apiClient = BinanceAPIClient(
             fetchAccount: { [] },
             fetchMyTrades: { _, _ in [] },
@@ -133,12 +133,10 @@ struct LivePriceServiceTests {
         )
         let service = PriceService.live(apiClient: apiClient)
 
-        do {
-            _ = try await service.fetchPrices(["BTCUSDT"])
-            Issue.record("Expected error to propagate")
-        } catch {
-            // Expected
-        }
+        // Ticker fetch failures degrade to an empty map rather than throwing —
+        // a partial price outage shouldn't take down the whole portfolio.
+        let prices = try await service.fetchPrices(["BTCUSDT"])
+        #expect(prices.isEmpty)
     }
 }
 
