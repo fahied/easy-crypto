@@ -7,17 +7,15 @@ advance:
   components: ["design-system"]
   started_at: "2026-08-08T04:00:00Z"
   implementation_completed_at: "2026-08-09T09:16:00Z"
+  review_time_estimate_minutes: 15
   review_time_actual_minutes: ~
   pr_links: []
   reviewability_score: 6
   risk_flags: []
   evidence:
-    - type: tests
-      description: "24 tests pass (15 design system + 9 FIFO margin)"
-      commit: ae850a5
-    - type: build
-      description: "xcodebuild TEST SUCCEEDED"
-      commit: ae850a5
+    - tidy:preparatory
+    - tdd:red-green
+    - tests:unit (24 tests: 15 MarginDesignSystemTests + 9 MarginFIFOCalculatorTests)
   model_usage:
     - claude-opus-4-8
   status: complete
