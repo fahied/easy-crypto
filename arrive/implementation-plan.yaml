@@ -141,7 +141,7 @@ passes:
     - id: ADV-DESIGN-SYSTEM-001
       advance_id: ADV-DESIGN-SYSTEM-001
       title: Margin P&L display components — GlassCard variants for margin positions
-      status: planned
+      status: done
       owner: null
       dependencies: []
       notes: null

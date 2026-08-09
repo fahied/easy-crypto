@@ -4,16 +4,23 @@ advance:
   title: "Margin P&L display components — GlassCard variants for margin positions"
   system: "easycrypto-core"
   primary_component: "design-system"
-  components: ["design-system", "trade-history", "portfolio", "holdings"]
-  started_at: "2026-08-07T09:00:00Z"
-  implementation_completed_at: ~
+  components: ["design-system"]
+  started_at: "2026-08-08T04:00:00Z"
+  implementation_completed_at: "2026-08-09T09:16:00Z"
   review_time_actual_minutes: ~
   pr_links: []
-  reviewability_score: 0
+  reviewability_score: 6
   risk_flags: []
-  evidence: []
-  model_usage: []
-  status: planned
+  evidence:
+    - type: tests
+      description: "24 tests pass (15 design system + 9 FIFO margin)"
+      commit: ae850a5
+    - type: build
+      description: "xcodebuild TEST SUCCEEDED"
+      commit: ae850a5
+  model_usage:
+    - claude-opus-4-8
+  status: complete
 ---
 
 ## Objective
@@ -88,16 +95,16 @@ After this advance:
 
 ## Planned Implementation Tasks
 
-- [ ] test: `TradingModeBadge` renders correct text and color per mode
-- [ ] test: `MarginPnLLabel` shows fee subtitle when fee > 0
-- [ ] test: `MarginPnLLabel` falls back to standard PnLLabel when fee is nil
-- [ ] test: `MarginHoldingRow` shows borrowed quantity and liquidation price
-- [ ] test: `MarginHoldingRow` hides margin columns in spot mode
-- [ ] test: `Theme.marginCross` and `Theme.marginIsolated` are accessible
-- [ ] tidy: add `marginCross` and `marginIsolated` to `Theme`
-- [ ] tidy: add `TradingModeBadge` view
-- [ ] tidy: add `MarginPnLLabel` view
-- [ ] tidy: add `MarginHoldingRow` view
+- [x] test: `TradingModeBadge` renders correct text and color per mode
+- [x] test: `MarginPnLLabel` shows fee subtitle when fee > 0
+- [x] test: `MarginPnLLabel` falls back to standard PnLLabel when fee is nil
+- [x] test: `MarginHoldingRow` shows borrowed quantity and liquidation price
+- [x] test: `MarginHoldingRow` hides margin columns in spot mode
+- [x] test: `Theme.marginCross` and `Theme.marginIsolated` are accessible
+- [x] tidy: add `marginCross` and `marginIsolated` to `Theme`
+- [x] tidy: add `TradingModeBadge` view
+- [x] tidy: add `MarginPnLLabel` view
+- [x] tidy: add `MarginHoldingRow` view
 
 ## Bug Fixes
 
@@ -110,9 +117,9 @@ After this advance:
 
 ## Evidence
 
-- [ ] tidy:preparatory
-- [ ] tdd:red-green
-- [ ] tests:unit (MarginDesignSystemTests — target 5 tests)
+- [x] tidy:preparatory
+- [x] tdd:red-green
+- [x] tests:unit (24 tests: 15 MarginDesignSystemTests + 9 MarginFIFOCalculatorTests)
 
 ## CI Evidence Notes
 
