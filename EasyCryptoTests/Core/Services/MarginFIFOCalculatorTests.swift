@@ -50,8 +50,8 @@ struct MarginFIFOCalculatorTests {
         let result = FIFOCalculator.live.calculateMargin(trades, fees)
 
         #expect(result.isMarginPosition == true)
-        #expect(result.totalBorrowingFees == 0.15)
-        #expect(result.marginAdjustedRealizedPnL == result.realizedPnL - 0.15)
+        #expect(abs(result.totalBorrowingFees - 0.15) < 1e-9)
+        #expect(abs(result.marginAdjustedRealizedPnL - (result.realizedPnL - 0.15)) < 1e-9)
     }
 
     @Test("When zero fees are provided, then margin P&L matches spot P&L exactly")
@@ -137,21 +137,21 @@ struct MarginFIFOCalculatorTests {
 
     @Test("When borrowingFeePerUnit is provided, then it deducts fees from each breakdown")
     func saleBreakdownsWithBorrowingFee() async throws {
-        // Buy 2 BTC @ 50k, sell 1 BTC @ 55k
+        // Buy 2 BTC @ 50k, sell 1 BTC @ 55k (commission 0.001 USDT)
         let trades: [FIFOTrade] = [
             .init(price: 50000, quantity: 2.0, commission: 0.001, commissionAsset: "BTC",
                   asset: "BTC", isBuyer: true),
             .init(price: 55000, quantity: 1.0, commission: 0.001, commissionAsset: "USDT",
                   asset: "BTC", isBuyer: false),
         ]
-        let feePerUnit = 0.01 // 0.01 per BTC sold = 0.01 total
+        let feePerUnit = 0.01 // 0.01 per BTC sold
 
         let breakdowns = FIFOCalculator.live.saleBreakdownsWithBorrowingFee(trades, feePerUnit)
 
         let sellBreakdown = breakdowns[1]!
-        // Without fee: (55000 - 50000) * 1 = 5000
-        // With fee: 5000 - 0.01 = 4999.99
-        #expect(abs(sellBreakdown.realizedPnL - 4999.99) < 1e-9)
+        // Without fee: (55000 - 50000) * 1 - 0.001 (USDT commission) = 4999.999
+        // With fee: 4999.999 - 1.0 * 0.01 (borrowing fee) = 4999.989
+        #expect(abs(sellBreakdown.realizedPnL - 4999.989) < 1e-6)
     }
 
     @Test("When feePerUnit is zero, then saleBreakdownsWithBorrowingFee matches saleBreakdowns")

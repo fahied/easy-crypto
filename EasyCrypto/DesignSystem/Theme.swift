@@ -12,6 +12,10 @@ enum Theme {
     static let loss = Color(red: 1.0, green: 0.27, blue: 0.33)
     static let neutral = Color.secondary
 
+    // Margin-specific colors
+    static let marginCross = Color(red: 0.98, green: 0.50, blue: 0.13)      // orange tint
+    static let marginIsolated = Color(red: 0.60, green: 0.40, blue: 0.95)     // purple tint
+
     // Corner radii
     static let cardRadius: CGFloat = 20
     static let smallRadius: CGFloat = 12

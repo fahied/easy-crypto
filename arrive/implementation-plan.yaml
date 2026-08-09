@@ -134,7 +134,7 @@ passes:
     - id: ADV-CORE-SERVICES-008
       advance_id: ADV-CORE-SERVICES-008
       title: Margin-aware FIFO calculator — borrowing costs and margin-adjusted P&L
-      status: planned
+      status: done
       owner: null
       dependencies: []
       notes: null

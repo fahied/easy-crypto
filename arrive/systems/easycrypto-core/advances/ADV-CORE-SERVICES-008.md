@@ -6,15 +6,18 @@ advance:
   primary_component: "core-services"
   components: ["core-services", "core-models"]
   started_at: "2026-08-07T09:00:00Z"
-  implementation_completed_at: ~
+  implementation_completed_at: "2026-08-09T04:30:00Z"
   review_time_estimate_minutes: 30
-  review_time_actual_minutes: ~
+  review_time_actual_minutes: 15
   pr_links: []
-  reviewability_score: 0
+  reviewability_score: 8
   risk_flags: []
-  evidence: []
+  evidence:
+    - tidy:preparatory
+    - tdd:red-green
+    - tests:unit (MarginFIFOCalculatorTests — 9 tests passed)
   model_usage: []
-  status: planned
+  status: complete
 ---
 
 ## Objective
@@ -109,7 +112,13 @@ After this advance:
 
 ## Changes Made
 
-*(populated during implementation)*
+- `EasyCrypto/Core/Services/FIFOCalculator.swift` — added `MarginFIFOResult` type,
+  `saleBreakdownsWithBorrowingFee` and `calculateMargin` closures to `FIFOCalculator`,
+  extracted `fifoCompute`/`fifoComputeBreakdowns` as module-level shared engine
+- `EasyCryptoTests/Core/Services/MarginFIFOCalculatorTests.swift` — 9 unit tests:
+  fee subtraction, multi-asset fee summation, zero-fee spot parity, empty trades,
+  buy-only isMarginPosition=false, formula verification, lot parity, breakdown fees,
+  zero-fee breakdown parity
 
 ## Check for Understanding
 
