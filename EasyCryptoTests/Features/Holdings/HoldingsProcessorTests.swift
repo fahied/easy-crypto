@@ -12,7 +12,7 @@ import SwiftData
 
 private func makeContainer() throws -> ModelContainer {
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    return try ModelContainer(for: Trade.self, SyncMetadata.self, AccountBalance.self, configurations: config)
+    return try ModelContainer(for: Trade.self, SyncMetadata.self, AccountBalance.self, MarginBalance.self, configurations: config)
 }
 
 private func seedTrades(in container: ModelContainer) throws {
@@ -31,6 +31,9 @@ private func seedTrades(in container: ModelContainer) throws {
         timestamp: Date(timeIntervalSince1970: 1_700_001_000),
         isBuyer: true, orderId: 101
     ))
+    // Seed balances matching the traded quantities
+    context.insert(AccountBalance(asset: "BTC", quantity: 1.0))
+    context.insert(AccountBalance(asset: "ETH", quantity: 5.0))
     try context.save()
 }
 

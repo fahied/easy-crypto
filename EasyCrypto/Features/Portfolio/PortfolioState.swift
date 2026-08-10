@@ -12,4 +12,5 @@ struct PortfolioState: ViewState {
     var error: String?
     var lastRefreshDate: Date?
     var sortCriteria: SortCriteria = .value
+    var selectedTradingMode: TradingMode = .spot
 }

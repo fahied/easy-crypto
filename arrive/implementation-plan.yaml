@@ -78,7 +78,7 @@ passes:
     - id: ADV-CORE-MODELS-002
       advance_id: ADV-CORE-MODELS-002
       title: 'Tidy-up: introduce TradingMode abstraction to decouple spot assumptions from core models'
-      status: planned
+      status: done
       owner: null
       dependencies: []
       notes: null
@@ -155,7 +155,7 @@ passes:
     - id: ADV-PORTFOLIO-002
       advance_id: ADV-PORTFOLIO-002
       title: Portfolio Holdings with margin mode — unified view across spot, cross-margin, and isolated-margin
-      status: planned
+      status: done
       owner: null
       dependencies: []
       notes: null

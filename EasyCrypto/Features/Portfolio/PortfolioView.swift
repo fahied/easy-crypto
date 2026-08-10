@@ -52,6 +52,7 @@ struct PortfolioView: View {
         ScrollView {
             VStack(spacing: Theme.sectionSpacing) {
                 summaryGrid
+                tradingModeBar
                 sortBar
                 holdingsList
                 lastRefreshFooter
@@ -111,6 +112,22 @@ struct PortfolioView: View {
 
     // MARK: - Sort Bar
 
+    private var tradingModeBar: some View {
+        Picker("Trading Mode", selection: Binding(
+            get: { state.selectedTradingMode },
+            set: { [weak processor] newMode in
+                guard let processor else { return }
+                processor.state.selectedTradingMode = newMode
+                Task { await processor.handle(.refresh) }
+            }
+        )) {
+            ForEach(TradingMode.allCases, id: \.self) { mode in
+                Text(mode.displayName).tag(mode)
+            }
+        }
+        .pickerStyle(.segmented)
+    }
+
     private var sortBar: some View {
         Picker("Sort by", selection: Binding(
             get: { state.sortCriteria },
@@ -128,11 +145,24 @@ struct PortfolioView: View {
     private var holdingsList: some View {
         LazyVStack(spacing: Theme.cardSpacing) {
             ForEach(state.holdings) { holding in
-                HoldingRow(holding: holding)
+                if state.selectedTradingMode != .spot {
+                    MarginHoldingRow(
+                        holding: holding,
+                        tradingMode: state.selectedTradingMode,
+                        borrowedQuantity: holding.borrowedQuantity,
+                        liquidationPrice: holding.liquidationPrice.map { String(format: "%.0f", $0) }
+                    )
                     .transition(.asymmetric(
                         insertion: .move(edge: .trailing).combined(with: .opacity),
                         removal: .move(edge: .leading).combined(with: .opacity)
                     ))
+                } else {
+                    HoldingRow(holding: holding)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .leading).combined(with: .opacity)
+                        ))
+                }
             }
         }
         .animation(.spring(duration: 0.35), value: state.holdings.map(\.asset))

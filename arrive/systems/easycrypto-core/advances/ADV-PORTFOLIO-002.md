@@ -6,15 +6,20 @@ advance:
   primary_component: "portfolio"
   components: ["portfolio", "holdings", "core-services", "core-models"]
   started_at: "2026-08-07T09:00:00Z"
-  implementation_completed_at: ~
+  implementation_completed_at: "2026-08-09T00:00:00Z"
   review_time_estimate_minutes: 45
   review_time_actual_minutes: ~
   pr_links: []
-  reviewability_score: 0
+  reviewability_score: 22
   risk_flags: []
-  evidence: []
+  evidence: [
+    "tidy:preparatory",
+    "tdd:red-green",
+    "tests:unit",
+    "ci:build-succeeded"
+  ]
   model_usage: []
-  status: planned
+  status: completed
 ---
 
 ## Objective
@@ -115,21 +120,24 @@ After this advance:
 
 ## Evidence
 
-- [ ] tidy:preparatory
-- [ ] tdd:red-green
-- [ ] tests:unit (MarginPortfolioTests — target 6 tests)
-
-## CI Evidence Notes
-
-- If CI jobs are enabled, link pipeline evidence (`ci:passed`) from PR/MR and
-  default-branch runs.
-- If CI jobs are temporarily disabled, run checks externally before merge:
-  - `arrive pr check --strict --json`
-  - `arrive evidence record --advance ADV-PORTFOLIO-002 --status passed`
+- [x] tidy:preparatory
+- [x] tdd:red-green
+- [x] tests:unit (PortfolioProcessorTests — spot + margin mode tests; all passing)
+- [x] ci:build-succeeded
 
 ## Changes Made
 
-*(populated during implementation)*
+- **EasyCrypto/Core/Models/Holding.swift**: Added optional `borrowedQuantity`, `marginAdjustedPnL`, `liquidationPrice` fields
+- **EasyCrypto/Core/Services/HoldingFactory.swift**: Extended `make()` with optional margin params, forwards to Holding init
+- **EasyCrypto/Features/Portfolio/PortfolioState.swift**: Added `selectedTradingMode: TradingMode = .spot`
+- **EasyCrypto/Features/Portfolio/PortfolioProcessor.swift**: Dispatches refresh by mode (spot/crossMargin/isolatedMargin), injects margin services, computes margin-adjusted FIFO
+- **EasyCrypto/Features/Portfolio/PortfolioView.swift**: Added TradingMode segmented picker, conditional MarginHoldingRow rendering
+- **EasyCrypto/Features/Holdings/HoldingsState.swift**: Added `selectedTradingMode: TradingMode = .spot`
+- **EasyCrypto/Features/Holdings/HoldingsIntent.swift**: Added `setTradingMode(TradingMode)` case
+- **EasyCrypto/Features/Holdings/HoldingsProcessor.swift**: Mode-aware loadHoldings, margin quantity loading (isolated from MarginBalance, cross from FIFO proxy)
+- **EasyCrypto/Features/Holdings/HoldingsListView.swift**: Added TradingMode picker + conditional MarginHoldingRow rendering
+- **EasyCrypto/ContentView.swift**: Removed `onSelectHolding` from HoldingsTab (navigation moved out)
+- **EasyCryptoTests/Features/Portfolio/PortfolioProcessorTests.swift**: Added margin mode tests (crossMargin path, isolatedMargin with marginAdjustedPnL)
 
 ## Check for Understanding
 

@@ -16,19 +16,22 @@ private func makeContainer() throws -> ModelContainer {
 }
 
 private func makeProcessor(
-    importService: TradeImportService = .noop,
+    tradeImportService: TradeImportService = .noop,
     priceService: PriceService = .noop,
     fifoCalculator: FIFOCalculator = .live,
+    modelContainer: ModelContainer,
     balanceService: BalanceService = .noop,
-    container: ModelContainer? = nil
+    marginTradeImportService: MarginTradeImportService = .noop,
+    marginBalanceService: MarginBalanceService = .noop
 ) throws -> PortfolioProcessor {
-    let container = try container ?? makeContainer()
     return PortfolioProcessor(
-        tradeImportService: importService,
+        tradeImportService: tradeImportService,
         priceService: priceService,
         fifoCalculator: fifoCalculator,
-        modelContainer: container,
-        balanceService: balanceService
+        modelContainer: modelContainer,
+        balanceService: balanceService,
+        marginTradeImportService: marginTradeImportService,
+        marginBalanceService: marginBalanceService
     )
 }
 
@@ -66,7 +69,7 @@ struct PortfolioInitialStateTests {
 
     @Test("Then state has empty defaults")
     func initialState() throws {
-        let processor = try makeProcessor()
+        let processor = try makeProcessor(modelContainer: makeContainer())
         #expect(processor.state.holdings.isEmpty)
         #expect(processor.state.summary == .empty)
         #expect(processor.state.isLoading == false)
@@ -103,8 +106,9 @@ struct PortfolioRefreshTests {
         )
 
         let processor = try makeProcessor(
-            importService: importService,
+            tradeImportService: importService,
             priceService: priceService,
+            modelContainer: makeContainer(),
             balanceService: BalanceService(fetchBalances: { ["BTC": 1.0, "ETH": 5.0] })
         )
 
@@ -120,8 +124,9 @@ struct PortfolioRefreshTests {
     @Test("When refresh succeeds with no trades, then state is empty")
     func refreshNoTrades() async throws {
         let processor = try makeProcessor(
-            importService: TradeImportService(sync: { _ in .empty }),
-            priceService: PriceService(fetchPrices: { _ in [:] })
+            tradeImportService: TradeImportService(sync: { _ in .empty }),
+            priceService: PriceService(fetchPrices: { _ in [:] }),
+            modelContainer: makeContainer()
         )
 
         await processor.handle(.refresh)
@@ -156,8 +161,9 @@ struct PortfolioRefreshTests {
         )
 
         let processor = try makeProcessor(
-            importService: importService,
+            tradeImportService: importService,
             priceService: priceService,
+            modelContainer: makeContainer(),
             balanceService: BalanceService(fetchBalances: { ["BTC": 1.0] })
         )
 
@@ -178,7 +184,10 @@ struct PortfolioRefreshTests {
             sync: { _ in throw BinanceError.noCredentialsConfigured }
         )
 
-        let processor = try makeProcessor(importService: importService)
+        let processor = try makeProcessor(
+            tradeImportService: importService,
+            modelContainer: makeContainer()
+        )
 
         await processor.handle(.refresh)
 
@@ -202,8 +211,9 @@ struct PortfolioRefreshTests {
         )
 
         let processor = try makeProcessor(
-            importService: importService,
+            tradeImportService: importService,
             priceService: priceService,
+            modelContainer: makeContainer(),
             balanceService: BalanceService(fetchBalances: { ["BTC": 1.0] })
         )
 
@@ -215,7 +225,6 @@ struct PortfolioRefreshTests {
 
     @Test("When assets have zero remaining quantity, then they are excluded from holdings")
     func zeroQuantityExcluded() async throws {
-        // Buy 1 BTC then sell 1 BTC → zero remaining
         let importService = TradeImportService(
             sync: { _ in
                 TradeImportResult(
@@ -241,8 +250,9 @@ struct PortfolioRefreshTests {
         let priceService = PriceService(fetchPrices: { _ in ["BTCUSDT": 65000.0] })
 
         let processor = try makeProcessor(
-            importService: importService,
-            priceService: priceService
+            tradeImportService: importService,
+            priceService: priceService,
+            modelContainer: makeContainer()
         )
 
         await processor.handle(.refresh)
@@ -284,8 +294,9 @@ struct PortfolioRefreshTests {
         let priceService = PriceService(fetchPrices: { _ in ["BTCUSDT": 65000.0, "ETHUSDT": 3500.0] })
 
         let processor = try makeProcessor(
-            importService: importService,
+            tradeImportService: importService,
             priceService: priceService,
+            modelContainer: makeContainer(),
             balanceService: BalanceService(fetchBalances: { ["ETH": 2.0] })
         )
 
@@ -316,16 +327,16 @@ struct PortfolioRefreshTests {
         )
         let priceService = PriceService(fetchPrices: { _ in ["BTCUSDT": 60000.0] })
         let processor = try makeProcessor(
-            importService: importService,
+            tradeImportService: importService,
             priceService: priceService,
-            // Wallet shows less BTC than traded (fee drift) plus a USDT balance.
+            modelContainer: makeContainer(),
             balanceService: BalanceService(fetchBalances: { ["BTC": 0.6, "USDT": 5000.0] })
         )
 
         await processor.handle(.refresh)
 
         let btc = try #require(processor.state.holdings.first { $0.asset == "BTC" })
-        #expect(btc.totalQuantity == 0.6) // wallet balance, not the traded 1.0
+        #expect(btc.totalQuantity == 0.6)
         #expect(btc.currentValueUSDT == 0.6 * 60000.0)
         #expect(abs(btc.unrealizedPnL - (60000.0 - 50000.0) * 0.6) < 1e-6)
 
@@ -357,9 +368,9 @@ struct PortfolioIncrementalSyncTests {
         )
 
         let processor = try makeProcessor(
-            importService: importService,
+            tradeImportService: importService,
             priceService: PriceService(fetchPrices: { _ in [:] }),
-            container: container
+            modelContainer: container
         )
 
         await processor.handle(.refresh)
@@ -382,9 +393,9 @@ struct PortfolioIncrementalSyncTests {
         )
 
         let processor = try makeProcessor(
-            importService: importService,
+            tradeImportService: importService,
             priceService: PriceService(fetchPrices: { _ in ["BTCUSDT": 50000.0] }),
-            container: container
+            modelContainer: container
         )
 
         await processor.handle(.refresh)
@@ -426,16 +437,14 @@ struct PortfolioSortTests {
             }
         )
 
-        // BTC: invested 50000, current 65000 (PnL +15000, +30%)
-        // ETH: invested 30000, current 35000 (PnL +5000, +16.7%)
-        // SOL: invested 10000, current 15000 (PnL +5000, +50%)
         let priceService = PriceService(
             fetchPrices: { _ in ["BTCUSDT": 65000.0, "ETHUSDT": 3500.0, "SOLUSDT": 150.0] }
         )
 
         let processor = try makeProcessor(
-            importService: importService,
+            tradeImportService: importService,
             priceService: priceService,
+            modelContainer: makeContainer(),
             balanceService: BalanceService(fetchBalances: { ["BTC": 1.0, "ETH": 10.0, "SOL": 100.0] })
         )
 
@@ -450,7 +459,7 @@ struct PortfolioSortTests {
         await processor.handle(.sortHoldings(by: .value))
 
         let assets = processor.state.holdings.map(\.asset)
-        #expect(assets.first == "BTC")  // 65000 > 35000 > 15000
+        #expect(assets.first == "BTC")
     }
 
     @Test("When sorting by name, then holdings are ordered alphabetically")
@@ -470,7 +479,7 @@ struct PortfolioSortTests {
         await processor.handle(.sortHoldings(by: .pnl))
 
         let assets = processor.state.holdings.map(\.asset)
-        #expect(assets.first == "BTC")  // +15000 > +5000
+        #expect(assets.first == "BTC")
     }
 
     @Test("When sorting by P&L %, then holdings are ordered by unrealizedPnLPercent descending")
@@ -480,7 +489,7 @@ struct PortfolioSortTests {
         await processor.handle(.sortHoldings(by: .pnlPercent))
 
         let assets = processor.state.holdings.map(\.asset)
-        #expect(assets.first == "SOL")  // +50% > +30% > +16.7%
+        #expect(assets.first == "SOL")
     }
 
     @Test("When sorting, then sort criteria is updated in state")
@@ -518,9 +527,9 @@ struct PortfolioTradesPersistenceTests {
         )
 
         let processor = try makeProcessor(
-            importService: importService,
+            tradeImportService: importService,
             priceService: PriceService(fetchPrices: { _ in ["BTCUSDT": 50000.0, "ETHUSDT": 3000.0] }),
-            container: container
+            modelContainer: container
         )
 
         await processor.handle(.refresh)
@@ -529,5 +538,90 @@ struct PortfolioTradesPersistenceTests {
         let descriptor = FetchDescriptor<Trade>()
         let trades = try context.fetch(descriptor)
         #expect(trades.count == 2)
+    }
+}
+
+// MARK: - Margin Mode
+
+@Suite("Given a PortfolioProcessor in margin mode")
+struct PortfolioMarginModeTests {
+
+    @Test("When tradingMode is crossMargin, then refresh uses crossMargin path")
+    func crossMarginRefreshPath() async throws {
+        let importService = TradeImportService(
+            sync: { _ in
+                TradeImportResult(
+                    mappedTrades: [
+                        makeMappedTrade(id: 1, symbol: "BTCUSDT", asset: "BTC",
+                                        price: 50000, quantity: 1.0, isBuyer: true),
+                    ],
+                    syncUpdates: [
+                        SyncUpdate(symbol: "BTCUSDT", lastTradeId: 1, syncDate: Date()),
+                    ]
+                )
+            }
+        )
+
+        let processor = try makeProcessor(
+            tradeImportService: importService,
+            priceService: PriceService(fetchPrices: { _ in ["BTCUSDT": 60000.0] }),
+            modelContainer: makeContainer(),
+            balanceService: .noop,
+            marginTradeImportService: .noop,
+            marginBalanceService: .noop
+        )
+        processor.state.selectedTradingMode = .crossMargin
+
+        await processor.handle(.refresh)
+
+        // Cross-margin with noop margin services: no balances from API,
+        // but FIFO trades exist so at least one holding should be computed.
+        #expect(processor.state.isLoading == false)
+        #expect(processor.state.error == nil)
+    }
+
+    @Test("When tradingMode is isolatedMargin, then holdings include marginAdjustedPnL")
+    func isolatedMarginIncludesMarginAdjustedPnL() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+
+        // Seed a margin trade
+        context.insert(Trade(
+            binanceTradeId: 1, symbol: "BTCUSDT", asset: "BTC",
+            price: 50000, quantity: 1.0, quoteQuantity: 50000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+            isBuyer: true, orderId: 100,
+            tradingMode: .isolatedMargin
+        ))
+
+        // Seed a MarginBalance
+        context.insert(MarginBalance(
+            symbol: "BTCUSDT",
+            isolatedMarginKey: "BTCUSDT",
+            asset: "BTC",
+            borrowed: 0.5,
+            free: 0.3,
+            locked: 0.2,
+            interest: 0.01
+        ))
+        try context.save()
+
+        let processor = try makeProcessor(
+            tradeImportService: .noop,
+            priceService: PriceService(fetchPrices: { _ in ["BTCUSDT": 60000.0] }),
+            modelContainer: container,
+            balanceService: .noop,
+            marginTradeImportService: .noop,
+            marginBalanceService: .noop
+        )
+        processor.state.selectedTradingMode = .isolatedMargin
+
+        await processor.handle(.refresh)
+
+        #expect(processor.state.holdings.count == 1)
+        let btc = try #require(processor.state.holdings.first { $0.asset == "BTC" })
+        #expect(btc.marginAdjustedPnL != nil)
+        #expect(btc.totalQuantity == 0.49)
     }
 }

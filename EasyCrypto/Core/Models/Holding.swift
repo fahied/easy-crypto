@@ -17,4 +17,41 @@ nonisolated struct Holding: Equatable, Sendable, Identifiable, Hashable {
     let unrealizedPnL: Double
     let unrealizedPnLPercent: Double
     let realizedPnL: Double
+
+    // MARK: - Margin Fields
+
+    /// Quantity borrowed on margin (nil for spot).
+    let borrowedQuantity: Double?
+    /// P&L after borrowing fee deduction (nil for spot).
+    let marginAdjustedPnL: Double?
+    /// Estimated liquidation price — populated for isolated-margin (nil for spot/cross).
+    let liquidationPrice: Double?
+
+    init(
+        asset: String,
+        totalQuantity: Double,
+        weightedAvgBuyPrice: Double,
+        totalInvestedUSDT: Double,
+        currentPrice: Double,
+        currentValueUSDT: Double,
+        unrealizedPnL: Double,
+        unrealizedPnLPercent: Double,
+        realizedPnL: Double,
+        borrowedQuantity: Double? = nil,
+        marginAdjustedPnL: Double? = nil,
+        liquidationPrice: Double? = nil
+    ) {
+        self.asset = asset
+        self.totalQuantity = totalQuantity
+        self.weightedAvgBuyPrice = weightedAvgBuyPrice
+        self.totalInvestedUSDT = totalInvestedUSDT
+        self.currentPrice = currentPrice
+        self.currentValueUSDT = currentValueUSDT
+        self.unrealizedPnL = unrealizedPnL
+        self.unrealizedPnLPercent = unrealizedPnLPercent
+        self.realizedPnL = realizedPnL
+        self.borrowedQuantity = borrowedQuantity
+        self.marginAdjustedPnL = marginAdjustedPnL
+        self.liquidationPrice = liquidationPrice
+    }
 }

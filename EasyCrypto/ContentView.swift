@@ -177,8 +177,6 @@ private struct HoldingsTab: View {
     let fifoCalculator: FIFOCalculator
     let modelContainer: ModelContainer
 
-    @State private var selectedHolding: Holding?
-
     var body: some View {
         NavigationStack {
             HoldingsListView(
@@ -186,23 +184,9 @@ private struct HoldingsTab: View {
                     priceService: priceService,
                     fifoCalculator: fifoCalculator,
                     modelContainer: modelContainer
-                ),
-                onSelectHolding: { holding in
-                    selectedHolding = holding
-                }
+                )
             )
             .navigationTitle("Holdings")
-            .navigationDestination(item: $selectedHolding) { holding in
-                CoinDetailView(
-                    processor: CoinDetailProcessor(
-                        apiClient: apiClient,
-                        priceService: priceService,
-                        fifoCalculator: fifoCalculator,
-                        modelContainer: modelContainer
-                    ),
-                    asset: holding.asset
-                )
-            }
         }
     }
 }

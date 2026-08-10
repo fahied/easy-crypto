@@ -9,17 +9,19 @@ advance:
   - core-services
   started_at: 2026-08-07T09:00:00Z
   started_by: null
-  implementation_completed_at: null
+  implementation_completed_at: "2026-08-09T09:20:00Z"
   implementation_completed_by: null
   updated_by: null
   archived_at: null
   archived_by: null
   review_time_estimate_minutes: 20
   pr_links: []
-  reviewability_score: 0
+  reviewability_score: 4
   risk_flags: []
-  evidence: []
-  status: planned
+  evidence:
+    - tidy:preparatory
+    - tests:unit (TradingModeTests, MarginBalanceTests)
+  status: complete
 ---
 
 ## Objective

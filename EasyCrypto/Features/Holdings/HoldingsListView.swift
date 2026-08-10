@@ -2,17 +2,47 @@
 //  HoldingsListView.swift
 //  EasyCrypto
 //
+//  Unified holdings view supporting spot, cross-margin, and isolated-margin modes.
+//
 
 import SwiftUI
 import SwiftData
 
 struct HoldingsListView: View {
     @State var processor: HoldingsProcessor
-    var onSelectHolding: (Holding) -> Void
 
     private var state: HoldingsState { processor.state }
 
     var body: some View {
+        VStack(spacing: Theme.sectionSpacing) {
+            tradingModeBar
+            holdingsList
+        }
+        .padding(.horizontal)
+        .padding(.bottom, 20)
+    }
+
+    // MARK: - Trading Mode Bar
+
+    private var tradingModeBar: some View {
+        Picker("Trading Mode", selection: Binding(
+            get: { state.selectedTradingMode },
+            set: { [weak processor] newMode in
+                guard let processor else { return }
+                processor.state.selectedTradingMode = newMode
+                Task { await processor.handle(.loadHoldings) }
+            }
+        )) {
+            ForEach(TradingMode.allCases, id: \.self) { mode in
+                Text(mode.displayName).tag(mode)
+            }
+        }
+        .pickerStyle(.segmented)
+    }
+
+    // MARK: - Holdings List
+
+    private var holdingsList: some View {
         Group {
             if state.isLoading && state.holdings.isEmpty {
                 loadingView
@@ -21,67 +51,64 @@ struct HoldingsListView: View {
             } else if state.holdings.isEmpty && !state.isLoading {
                 emptyView
             } else {
-                holdingsList
-            }
-        }
-        .task {
-            guard state.holdings.isEmpty else { return }
-            await processor.handle(.loadHoldings)
-        }
-    }
-
-    // MARK: - Holdings List
-
-    private var holdingsList: some View {
-        ScrollView {
-            LazyVStack(spacing: Theme.cardSpacing) {
-                ForEach(state.holdings) { holding in
-                    Button {
-                        onSelectHolding(holding)
-                    } label: {
-                        HoldingRow(holding: holding)
+                LazyVStack(spacing: Theme.cardSpacing) {
+                    ForEach(state.holdings) { holding in
+                        if state.selectedTradingMode != .spot {
+                            MarginHoldingRow(
+                                holding: holding,
+                                tradingMode: state.selectedTradingMode,
+                                borrowedQuantity: holding.borrowedQuantity,
+                                liquidationPrice: holding.liquidationPrice.map { String(format: "%.0f", $0) }
+                            )
+                        } else {
+                            HoldingRow(holding: holding)
+                        }
                     }
-                    .buttonStyle(.plain)
                 }
+                .animation(.spring(duration: 0.35), value: state.holdings.map(\.asset))
             }
-            .padding(.horizontal)
-            .padding(.bottom, 20)
         }
-        .scrollIndicators(.hidden)
     }
 
-    // MARK: - Empty
+    // MARK: - Empty State
 
     private var emptyView: some View {
         ContentUnavailableView {
-            Label("No Holdings", systemImage: "chart.bar")
+            Label("No Holdings", systemImage: "chart.pie")
         } description: {
-            Text("Sync your trades from the Portfolio tab to see holdings here.")
+            Text("Pull down to refresh and sync your trades from Binance.")
+        } actions: {
+            Button("Refresh Now") {
+                processor.send(.loadHoldings)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Theme.accent)
         }
     }
 
-    // MARK: - Loading
+    // MARK: - Loading State
 
     private var loadingView: some View {
         VStack(spacing: 16) {
             ProgressView()
                 .controlSize(.large)
-            Text("Loading holdings…")
+            Text("Syncing trades…")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Error
+    // MARK: - Error State
 
     private func errorView(_ message: String) -> some View {
         ContentUnavailableView {
-            Label("Error", systemImage: "exclamationmark.triangle")
+            Label("Something Went Wrong", systemImage: "exclamationmark.triangle")
         } description: {
             Text(message)
+                .multilineTextAlignment(.center)
         } actions: {
-            Button("Retry") {
+            Button("Try Again") {
                 processor.send(.loadHoldings)
             }
             .buttonStyle(.borderedProminent)
@@ -92,55 +119,87 @@ struct HoldingsListView: View {
 
 // MARK: - Previews
 
-#Preview("Multiple coins") {
+#Preview("Spot mode") {
     let container = try! ModelContainer(
-        for: Trade.self, SyncMetadata.self, AccountBalance.self, MarginBalance.self,
+        for: Trade.self, SyncMetadata.self, AccountBalance.self,
         configurations: ModelConfiguration(isStoredInMemoryOnly: true)
     )
     let processor = HoldingsProcessor(
-        priceService: .noop,
+        priceService: PriceService(
+            fetchPrices: { @Sendable symbols in
+                Dictionary(uniqueKeysWithValues: symbols.map { ($0, 50000.0) })
+            }
+        ),
         fifoCalculator: .live,
         modelContainer: container
     )
-    processor.state.holdings = PreviewSampleData.sampleHoldings
     return NavigationStack {
-        HoldingsListView(processor: processor, onSelectHolding: { _ in })
-            .navigationTitle("Holdings")
+        HoldingsListView(processor: processor)
     }
     .preferredColorScheme(.dark)
 }
 
-#Preview("Single coin") {
+#Preview("Cross margin mode") {
     let container = try! ModelContainer(
-        for: Trade.self, SyncMetadata.self, AccountBalance.self, MarginBalance.self,
+        for: Trade.self, SyncMetadata.self, AccountBalance.self,
         configurations: ModelConfiguration(isStoredInMemoryOnly: true)
     )
     let processor = HoldingsProcessor(
-        priceService: .noop,
+        priceService: PriceService(
+            fetchPrices: { @Sendable symbols in
+                Dictionary(uniqueKeysWithValues: symbols.map { ($0, 50000.0) })
+            }
+        ),
         fifoCalculator: .live,
-        modelContainer: container
+        modelContainer: container,
+        marginTradeImportService: .noop,
+        marginBalanceService: MarginBalanceService(
+            fetchCrossMarginAccount: {
+                CrossMarginAccountData(
+                    marginLevel: 3.2,
+                    totalAsset: 50000,
+                    totalLiability: 15000,
+                    totalNetAsset: 35000,
+                    totalAssetOfBtc: 0.5,
+                    totalLiabilityOfBtc: 0.15,
+                    totalNetAssetOfBtc: 0.4,
+                    maxBorrowable: 100000,
+                    maintained: 20000,
+                    perAssetInterest: ["BTC": 0.001, "ETH": 0.002]
+                )
+            },
+            fetchIsolatedMarginBalances: { _ in nil }
+        )
     )
-    processor.state.holdings = [PreviewSampleData.sampleHoldings[0]]
+    processor.state.selectedTradingMode = .crossMargin
     return NavigationStack {
-        HoldingsListView(processor: processor, onSelectHolding: { _ in })
-            .navigationTitle("Holdings")
+        HoldingsListView(processor: processor)
     }
     .preferredColorScheme(.dark)
 }
 
-#Preview("Empty") {
+#Preview("Isolated margin mode") {
     let container = try! ModelContainer(
-        for: Trade.self, SyncMetadata.self, AccountBalance.self, MarginBalance.self,
+        for: Trade.self, SyncMetadata.self, MarginBalance.self,
         configurations: ModelConfiguration(isStoredInMemoryOnly: true)
     )
     let processor = HoldingsProcessor(
-        priceService: .noop,
+        priceService: PriceService(
+            fetchPrices: { @Sendable symbols in
+                Dictionary(uniqueKeysWithValues: symbols.map { ($0, 50000.0) })
+            }
+        ),
         fifoCalculator: .live,
-        modelContainer: container
+        modelContainer: container,
+        marginTradeImportService: .noop,
+        marginBalanceService: MarginBalanceService(
+            fetchCrossMarginAccount: { nil },
+            fetchIsolatedMarginBalances: { _ in nil }
+        )
     )
+    processor.state.selectedTradingMode = .isolatedMargin
     return NavigationStack {
-        HoldingsListView(processor: processor, onSelectHolding: { _ in })
-            .navigationTitle("Holdings")
+        HoldingsListView(processor: processor)
     }
     .preferredColorScheme(.dark)
 }

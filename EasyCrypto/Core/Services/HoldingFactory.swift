@@ -18,7 +18,10 @@ nonisolated enum HoldingFactory {
         asset: String,
         quantity: Double,
         currentPrice: Double,
-        fifo: FIFOResult
+        fifo: FIFOResult,
+        borrowedQuantity: Double? = nil,
+        marginAdjustedPnL: Double? = nil,
+        liquidationPrice: Double? = nil
     ) -> Holding {
         let avgBuyPrice = fifo.weightedAvgBuyPrice
         let hasCostBasis = avgBuyPrice > 0
@@ -36,7 +39,10 @@ nonisolated enum HoldingFactory {
             currentValueUSDT: currentValue,
             unrealizedPnL: unrealizedPnL,
             unrealizedPnLPercent: unrealizedPnLPercent,
-            realizedPnL: fifo.realizedPnL
+            realizedPnL: fifo.realizedPnL,
+            borrowedQuantity: borrowedQuantity,
+            marginAdjustedPnL: marginAdjustedPnL,
+            liquidationPrice: liquidationPrice
         )
     }
 }
