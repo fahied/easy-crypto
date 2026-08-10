@@ -79,6 +79,7 @@ nonisolated struct BinanceMarginAccount: Sendable, Codable {
     let totalNetAsset: String
     let maxBorrowable: String
     let maintained: String?
+    let totalCoin: String? = nil
 
     struct AssetEntry: Sendable, Codable {
         let asset: String
@@ -90,7 +91,7 @@ nonisolated struct BinanceMarginAccount: Sendable, Codable {
         let netAssetOfBtc: String
         let maxBorrowable: String
     }
-    let userAssets: [AssetEntry]
+    let userAssets: [AssetEntry]?
 }
 
 /// GET /sapi/v1/margin/isolated/account — per-isolated-symbol account overview.

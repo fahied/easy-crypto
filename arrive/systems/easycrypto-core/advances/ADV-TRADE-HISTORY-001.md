@@ -6,15 +6,15 @@ advance:
   primary_component: "trade-history"
   components: ["trade-history", "core-services", "core-models", "portfolio"]
   started_at: "2026-08-07T09:00:00Z"
-  implementation_completed_at: ~
+  implementation_completed_at: "2026-08-10"
   review_time_estimate_minutes: 30
   review_time_actual_minutes: ~
   pr_links: []
-  reviewability_score: 0
+  reviewability_score: 30
   risk_flags: []
-  evidence: []
+  evidence: ["tdd:6-tests", "build:passed", "margin-sync:fixed"]
   model_usage: []
-  status: planned
+  status: complete
 ---
 
 ## Objective
@@ -81,16 +81,16 @@ After this advance:
 
 ## Planned Implementation Tasks
 
-- [ ] test: spot-only filter returns only spot trades
-- [ ] test: cross-margin filter returns only cross-margin trades
-- [ ] test: isolated-margin filter returns only isolated-margin trades
-- [ ] test: mode badge appears with correct color per TradingMode
-- [ ] test: borrowing fee column populated for margin trades
-- [ ] test: switching modes clears and reloads
-- [ ] tidy: add `selectedTradingMode` to `TradeHistoryState`
-- [ ] tidy: filter `fetchAllTrades` by `tradingMode` predicate
-- [ ] tidy: add mode badge, fee column to `TradeHistoryView`
-- [ ] tidy: extend `DayTradeDetail` with margin-specific optional fields
+- [x] test: spot-only filter returns only spot trades
+- [x] test: cross-margin filter returns only cross-margin trades
+- [x] test: isolated-margin filter returns only isolated-margin trades
+- [x] test: mode badge appears with correct color per TradingMode
+- [x] test: borrowing fee column populated for margin trades
+- [x] test: switching modes clears and reloads
+- [x] tidy: add `selectedTradingMode` to `TradeHistoryState`
+- [x] tidy: filter `fetchAllTrades` by `tradingMode` predicate
+- [x] tidy: add mode badge, fee column to `TradeHistoryView`
+- [x] tidy: extend `DayTradeDetail` with margin-specific optional fields
 
 ## Bug Fixes
 
@@ -118,7 +118,29 @@ After this advance:
 
 ## Changes Made
 
-*(populated during implementation)*
+- `TradeHistoryState.swift`: added `selectedTradingMode: TradingMode = .spot`
+- `TradeHistoryIntent.swift`: added `.filterByMode(TradingMode)` case
+- `TradeHistoryProcessor.swift`:
+  - `fetchAllTrades(mode:)` accepts mode parameter, filters via `#Predicate<Trade>`
+  - Added `estimateBorrowingFeePerUnit(asset:)` helper
+  - Added `filterByMode(_:)` method — clears coin filter, reloads with mode predicate
+  - `buildDetails` uses margin-aware breakdowns when mode != spot
+  - `aggregate` populates `tradingMode`, `borrowingFee`, `marginAdjustedPnL` on `DayTradeDetail`
+- `TradeHistoryView.swift`: added `tradingModePicker` (segmented control) above filter chips
+- `DayDetailView.swift`: updated previews to show margin fields
+- `TradeHistoryProcessorTests.swift`: added `TradeHistoryModeFilterTests` (6 tests)
+- `HoldingsProcessor.swift`: fixed margin refresh — synced fresh data from exchange before loading; ContentView now passes live margin services to HoldingsProcessor
+
+## Check for Understanding
+
+1. How does the `TradingMode` filter in `TradeHistoryProcessor` use SwiftData predicates?
+   It passes `mode` to `fetchAllTrades(mode:)` which builds `#Predicate<Trade> { $0.tradingModeEnum == mode }` — this lets SwiftData filter at the database level rather than loading all trades and filtering in memory.
+
+2. Why does `DayTradeDetail` need new optional fields for margin data?
+   Spot mode has no borrowing fees or margin-adjusted P&L. Adding optional fields preserves backward compatibility — spot details have nil values, margin details show the enriched data.
+
+3. How does the segmented control interact with the coin filter?
+   The Picker's custom binding sets the mode and dispatches `.filterByMode` which clears the coin filter (`selectedCoin = nil`) and reloads trades. The coin dropdown redis covers the available coins for the new mode.
 
 ## Check for Understanding
 

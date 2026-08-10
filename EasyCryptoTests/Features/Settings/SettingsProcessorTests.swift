@@ -243,3 +243,75 @@ struct SettingsClearTests {
         }
     }
 }
+
+// MARK: - Trading Mode
+
+@Suite("Given a SettingsProcessor with trading mode")
+struct SettingsTradingModeTests {
+
+    @Test("When setting trading mode, then state is updated")
+    func setsTradingMode() async throws {
+        let container = try makeContainer()
+        let processor = makeProcessor(container: container)
+
+        await processor.handle(.setTradingMode(.crossMargin))
+
+        #expect(processor.state.selectedTradingMode == .crossMargin)
+    }
+
+    @Test("When setting cross-margin, then UserDefaults is persisted")
+    func persistsCrossMargin() async throws {
+        let container = try makeContainer()
+        let processor = makeProcessor(container: container)
+
+        await processor.handle(.setTradingMode(.crossMargin))
+
+        #expect(UserDefaults.standard.string(forKey: "selectedTradingMode") == "cross_margin")
+    }
+
+    @Test("When setting isolated-margin, then UserDefaults is persisted")
+    func persistsIsolatedMargin() async throws {
+        let container = try makeContainer()
+        let processor = makeProcessor(container: container)
+
+        await processor.handle(.setTradingMode(.isolatedMargin))
+
+        #expect(UserDefaults.standard.string(forKey: "selectedTradingMode") == "isolated_margin")
+    }
+
+    @Test("When switching back to spot, then mode resets")
+    func resetsToSpot() async throws {
+        let container = try makeContainer()
+        let processor = makeProcessor(container: container)
+
+        await processor.handle(.setTradingMode(.crossMargin))
+        await processor.handle(.setTradingMode(.spot))
+
+        #expect(processor.state.selectedTradingMode == .spot)
+        #expect(UserDefaults.standard.string(forKey: "selectedTradingMode") == "spot")
+    }
+
+    @Test("When loading trading mode, then state reads from UserDefaults")
+    func loadsFromUserDefaults() async throws {
+        let container = try makeContainer()
+        UserDefaults.standard.set("isolated_margin", forKey: "selectedTradingMode")
+
+        let processor = makeProcessor(container: container)
+
+        await processor.handle(.loadTradingMode)
+
+        #expect(processor.state.selectedTradingMode == .isolatedMargin)
+    }
+
+    @Test("When no trading mode stored, then defaults to spot")
+    func defaultsToSpot() async throws {
+        let container = try makeContainer()
+        UserDefaults.standard.removeObject(forKey: "selectedTradingMode")
+
+        let processor = makeProcessor(container: container)
+
+        await processor.handle(.loadTradingMode)
+
+        #expect(processor.state.selectedTradingMode == .spot)
+    }
+}

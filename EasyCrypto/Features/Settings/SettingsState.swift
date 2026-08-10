@@ -40,4 +40,5 @@ struct SettingsState: ViewState {
     var alertRows: [PriceAlertRow] = []
     var notificationLog: [NotificationLogRow] = []
     var aiInsightsEnabled: Bool = true
+    var selectedTradingMode: TradingMode = .spot
 }

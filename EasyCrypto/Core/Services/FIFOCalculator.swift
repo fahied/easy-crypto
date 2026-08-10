@@ -49,6 +49,8 @@ nonisolated struct SaleBreakdown: Equatable, Sendable {
     let costBasisAmount: Double
     /// Realized profit/loss for this individual sell (net of fees).
     let realizedPnL: Double
+    /// Borrowing fee deducted for this sell (0 for spot trades).
+    let borrowingFee: Double
 }
 
 /// Margin-adjusted FIFO result. Wraps `FIFOResult` and adds borrowing fee
@@ -189,8 +191,12 @@ private func fifoComputeBreakdowns(
                 saleRealizedPnL -= trade.commission
             }
 
+            let borrowingFee: Double
             if let feePerUnit = borrowingFeePerUnit, feePerUnit != 0 {
-                saleRealizedPnL -= soldQuantity * feePerUnit
+                borrowingFee = soldQuantity * feePerUnit
+                saleRealizedPnL -= borrowingFee
+            } else {
+                borrowingFee = 0
             }
 
             let costBasisPrice = soldQuantity > epsilon ? costBasisAmount / soldQuantity : 0
@@ -198,7 +204,8 @@ private func fifoComputeBreakdowns(
             breakdowns.append(SaleBreakdown(
                 costBasisPrice: costBasisPrice,
                 costBasisAmount: costBasisAmount,
-                realizedPnL: saleRealizedPnL
+                realizedPnL: saleRealizedPnL,
+                borrowingFee: borrowingFee
             ))
         }
     }

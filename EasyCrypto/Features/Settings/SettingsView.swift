@@ -19,6 +19,7 @@ struct SettingsView: View {
             VStack(spacing: Theme.sectionSpacing) {
                 apiKeySection
                 connectionSection
+                tradingModeSection
                 syncStatsSection
                 alertsSection
                 insightsSection
@@ -33,6 +34,7 @@ struct SettingsView: View {
             await processor.handle(.loadCredentials)
             await processor.handle(.loadAlerts)
             await processor.handle(.loadInsightsSettings)
+            await processor.handle(.loadTradingMode)
         }
         .alert("Clear All Data", isPresented: Binding(
             get: { state.showClearConfirmation },
@@ -158,6 +160,36 @@ struct SettingsView: View {
                     .lineLimit(2)
             }
         }
+    }
+
+    // MARK: - Trading Mode
+
+    private var tradingModeSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Trading Mode", systemImage: "arrow.triangle.2.circlepath")
+                .font(.headline)
+
+            Picker("Trading Mode", selection: Binding(
+                get: { state.selectedTradingMode },
+                set: { [weak processor] newMode in
+                    guard let processor else { return }
+                    processor.state.selectedTradingMode = newMode
+                    Task { await processor.handle(.setTradingMode(newMode)) }
+                }
+            )) {
+                ForEach(TradingMode.allCases, id: \.self) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            if state.selectedTradingMode != .spot {
+                Text("Margin trading requires margin to be enabled on your Binance account.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .glassCard()
     }
 
     // MARK: - Sync Stats

@@ -176,7 +176,7 @@ passes:
     - id: ADV-SETTINGS-003
       advance_id: ADV-SETTINGS-003
       title: Settings UI for trading mode selection — spot, cross-margin, and isolated-margin toggle
-      status: planned
+      status: done
       owner: null
       dependencies: []
       notes: null

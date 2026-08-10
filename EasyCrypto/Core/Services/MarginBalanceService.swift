@@ -33,7 +33,7 @@ extension MarginBalanceService {
         MarginBalanceService(
             fetchCrossMarginAccount: {
                 let account = try await apiClient.fetchMarginAccount()
-                guard !account.userAssets.isEmpty else {
+                guard !(account.userAssets ?? []).isEmpty else {
                     logger.info("Cross-margin account empty — returning nil")
                     return nil
                 }

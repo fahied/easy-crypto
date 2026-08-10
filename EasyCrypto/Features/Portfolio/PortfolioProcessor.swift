@@ -77,7 +77,7 @@ class PortfolioProcessor: Processor {
         let importResult = try await tradeImportService.sync(syncMap)
 
         persistSyncUpdates(importResult.syncUpdates)
-        try persistTrades(importResult.mappedTrades)
+        try persistTrades(importResult.mappedTrades, mode: .spot)
 
         let portfolioData = try await computeSpotPortfolioData()
         state.holdings = Self.sortHoldings(portfolioData.holdings, by: state.sortCriteria)
@@ -95,7 +95,7 @@ class PortfolioProcessor: Processor {
         let syncMap = fetchSyncMap()
         let importResult = try await marginTradeImportService.sync(mode, syncMap)
         persistSyncUpdates(importResult.syncUpdates)
-        try persistTrades(importResult.mappedTrades)
+        try persistTrades(importResult.mappedTrades, mode: mode)
 
         // 2. Load quantities and interest based on mode
         let (balances, perAssetInterest) = try await fetchMarginQuantities(mode: mode)
@@ -347,7 +347,7 @@ class PortfolioProcessor: Processor {
         try? modelContext.save()
     }
 
-    private func persistTrades(_ mappedTrades: [MappedTrade]) throws {
+    private func persistTrades(_ mappedTrades: [MappedTrade], mode: TradingMode = .spot) throws {
         for mapped in mappedTrades {
             let trade = Trade(
                 binanceTradeId: mapped.binanceTradeId,
@@ -360,7 +360,8 @@ class PortfolioProcessor: Processor {
                 commissionAsset: mapped.commissionAsset,
                 timestamp: mapped.timestamp,
                 isBuyer: mapped.isBuyer,
-                orderId: mapped.orderId
+                orderId: mapped.orderId,
+                tradingMode: mode
             )
             modelContext.insert(trade)
         }

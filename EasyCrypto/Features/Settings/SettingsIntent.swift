@@ -26,4 +26,6 @@ enum SettingsIntent: Intent {
     case setAlertPercent(symbol: String, percent: Double)
     case loadInsightsSettings
     case setInsightsEnabled(Bool)
+    case loadTradingMode
+    case setTradingMode(TradingMode)
 }

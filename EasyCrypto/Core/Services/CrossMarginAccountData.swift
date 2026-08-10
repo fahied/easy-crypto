@@ -60,7 +60,7 @@ nonisolated struct CrossMarginAccountData: Sendable {
         self.maintained = account.maintained.flatMap(Double.init)
 
         var interestMap: [String: Double] = [:]
-        for entry in account.userAssets {
+        for entry in account.userAssets ?? [] {
             if let interest = Double(entry.interest), interest != 0 {
                 interestMap[entry.asset] = interest
             }

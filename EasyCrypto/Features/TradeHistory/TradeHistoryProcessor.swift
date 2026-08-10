@@ -26,6 +26,8 @@ class TradeHistoryProcessor: Processor {
             await loadHistory()
         case .filterByCoin(let coin):
             await filterByCoin(coin)
+        case .filterByMode(let mode):
+            await filterByMode(mode)
         case .nextMonth:
             shiftMonth(by: 1)
         case .previousMonth:
@@ -46,7 +48,7 @@ class TradeHistoryProcessor: Processor {
         state.error = nil
 
         do {
-            let allTrades = try fetchAllTrades()
+            let allTrades = try fetchAllTrades(mode: state.selectedTradingMode)
             state.availableCoins = discoverCoins(from: allTrades)
             rebuild(from: allTrades, coin: state.selectedCoin)
 
@@ -66,8 +68,23 @@ class TradeHistoryProcessor: Processor {
         state.error = nil
 
         do {
-            let allTrades = try fetchAllTrades()
+            let allTrades = try fetchAllTrades(mode: state.selectedTradingMode)
             rebuild(from: allTrades, coin: coin)
+        } catch {
+            state.error = error.localizedDescription
+        }
+    }
+
+    private func filterByMode(_ mode: TradingMode?) async {
+        guard let mode else { return }
+        state.selectedTradingMode = mode
+        state.selectedCoin = nil
+        state.error = nil
+
+        do {
+            let allTrades = try fetchAllTrades(mode: mode)
+            state.availableCoins = discoverCoins(from: allTrades)
+            rebuild(from: allTrades, coin: nil)
         } catch {
             state.error = error.localizedDescription
         }
@@ -101,6 +118,8 @@ class TradeHistoryProcessor: Processor {
         let byAsset = Dictionary(grouping: allTrades) { $0.asset }
         var details: [DayTradeDetail] = []
 
+        let useMargin = state.selectedTradingMode != .spot
+
         for (asset, trades) in byAsset {
             if let coin, coin != asset { continue }
 
@@ -115,7 +134,15 @@ class TradeHistoryProcessor: Processor {
                     isBuyer: trade.isBuyer
                 )
             }
-            let breakdowns = fifoCalculator.saleBreakdowns(fifoTrades)
+
+            // In margin mode, distribute a per-asset borrowing fee across sells.
+            let borrowingFeePerUnit: Double? = useMargin ? estimateBorrowingFeePerUnit(asset: asset, assetTrades: chronological) : nil
+            let breakdowns: [SaleBreakdown?]
+            if useMargin, let fee = borrowingFeePerUnit, fee != 0 {
+                breakdowns = fifoCalculator.saleBreakdownsWithBorrowingFee(fifoTrades, fee)
+            } else {
+                breakdowns = fifoCalculator.saleBreakdowns(fifoTrades)
+            }
 
             // Pair each fill with its FIFO breakdown, preserving chronological order.
             let fills = Array(zip(chronological, breakdowns))
@@ -151,17 +178,22 @@ class TradeHistoryProcessor: Processor {
                 symbol: first.symbol,
                 timestamp: timestamp,
                 isBuyer: true,
+                tradingMode: first.tradingModeEnum,
                 price: avgPrice,
                 quantity: totalQuantity,
                 total: totalQuote,
                 costBasisPrice: nil,
                 invested: totalQuote,
-                realizedPnL: nil
+                realizedPnL: nil,
+                borrowingFee: nil,
+                marginAdjustedPnL: nil
             )
         }
 
         let costBasisAmount = ordered.reduce(0.0) { $0 + ($1.1?.costBasisAmount ?? 0) }
         let realizedPnL = ordered.reduce(0.0) { $0 + ($1.1?.realizedPnL ?? 0) }
+        let borrowingFee = ordered.reduce(0.0) { $0 + ($1.1?.borrowingFee ?? 0) }
+        let marginAdjustedPnL = borrowingFee != 0 ? realizedPnL - borrowingFee : nil
         let costBasisPrice = totalQuantity > 0 ? costBasisAmount / totalQuantity : nil
         return DayTradeDetail(
             id: "\(first.symbol)-order-\(first.orderId)-sell",
@@ -169,12 +201,15 @@ class TradeHistoryProcessor: Processor {
             symbol: first.symbol,
             timestamp: timestamp,
             isBuyer: false,
+            tradingMode: first.tradingModeEnum,
             price: avgPrice,
             quantity: totalQuantity,
             total: totalQuote,
             costBasisPrice: costBasisPrice,
             invested: costBasisAmount,
-            realizedPnL: realizedPnL
+            realizedPnL: realizedPnL,
+            borrowingFee: borrowingFee != 0 ? borrowingFee : nil,
+            marginAdjustedPnL: marginAdjustedPnL
         )
     }
 
@@ -193,8 +228,9 @@ class TradeHistoryProcessor: Processor {
 
     // MARK: - Fetching
 
-    private func fetchAllTrades() throws -> [Trade] {
+    private func fetchAllTrades(mode: TradingMode = .spot) throws -> [Trade] {
         let descriptor = FetchDescriptor<Trade>(
+            predicate: #Predicate { $0.tradingMode == mode.rawValue },
             sortBy: [SortDescriptor(\.timestamp)]
         )
         return try modelContext.fetch(descriptor)
@@ -202,6 +238,28 @@ class TradeHistoryProcessor: Processor {
 
     private func discoverCoins(from trades: [Trade]) -> [String] {
         Array(Set(trades.map(\.asset))).sorted()
+    }
+
+    /// Estimates a per-unit borrowing fee for the given asset.
+    ///
+    /// In cross-margin mode, fees come from the asset's interest rate in
+    /// `CrossMarginAccountData.perAssetInterest`. In isolated-margin mode, from
+    /// `IsolatedMarginBalance.interest`. For trade history (which reads persisted
+    /// data), we use a rough approximation: total commission on sells divided by
+    /// total sell quantity, which captures the realized borrowing cost already
+    /// embedded in the trades.
+    ///
+    /// `assetTrades` should be the full chronological trade list for the asset
+    /// (not the display-filtered subset), so the estimate is stable across
+    /// coin-filter changes.
+    private func estimateBorrowingFeePerUnit(asset: String, assetTrades: [Trade] = []) -> Double? {
+        let sells = assetTrades.isEmpty
+            ? state.trades.filter { !$0.isBuyer && $0.asset == asset }
+            : assetTrades.filter { !$0.isBuyer }
+        let totalFee = sells.reduce(0.0) { $0 + $1.commission }
+        let totalQty = sells.reduce(0.0) { $0 + $1.quantity }
+        guard totalQty > 0 else { return nil }
+        return totalFee / totalQty
     }
 }
 

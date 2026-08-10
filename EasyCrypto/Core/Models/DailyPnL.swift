@@ -24,6 +24,7 @@ nonisolated struct DayTradeDetail: Identifiable, Equatable, Sendable {
     let symbol: String
     let timestamp: Date
     let isBuyer: Bool
+    let tradingMode: TradingMode
     /// Executed price of the trade (buy price for buys, sell price for sells).
     let price: Double
     let quantity: Double
@@ -36,4 +37,8 @@ nonisolated struct DayTradeDetail: Identifiable, Equatable, Sendable {
     let invested: Double?
     /// Realized profit/loss for this transaction (sells only).
     let realizedPnL: Double?
+    /// Borrowing fee deducted for this sell (margin trades only; nil for spot).
+    let borrowingFee: Double?
+    /// P&L after borrowing fee deduction (margin sells only; nil for spot/buys).
+    let marginAdjustedPnL: Double?
 }

@@ -84,8 +84,20 @@ class HoldingsProcessor: Processor {
     // MARK: - Margin Holdings
 
     private func loadMarginHoldings() async throws -> PortfolioData {
-        let trades = try fetchTrades(matching: state.selectedTradingMode)
+        let mode = state.selectedTradingMode
 
+        // Sync fresh trades and balances from the exchange before loading.
+        let syncMap = fetchSyncMap()
+        let importResult = try await marginTradeImportService.sync(mode, syncMap)
+        persistSyncUpdates(importResult.syncUpdates)
+        try persistTrades(importResult.mappedTrades, mode: mode)
+
+        if mode == .isolatedMargin {
+            let isolatedBalances = try await fetchAllIsolatedMarginBalancesLive()
+            try persistIsolatedMarginBalances(isolatedBalances)
+        }
+
+        let trades = try fetchTrades(matching: mode)
         let tradesByAsset = Dictionary(grouping: trades) { $0.asset }
 
         var fifoByAsset: [String: FIFOResult] = [:]
@@ -146,20 +158,16 @@ class HoldingsProcessor: Processor {
             return (quantities, interest)
         } else {
             // Cross-margin: no persistent per-asset quantity model.
-            // Use FIFO remaining quantity as a proxy.
-            let trades = try fetchTrades(matching: .crossMargin)
-            let fifoTrades = trades.map(Self.toFIFOTrade)
-            let fifoResult = fifoCalculator.calculate(fifoTrades)
-            // Fall back to empty — cross-margin quantities come from live API during refresh
-            // HoldingsProcessor reads persisted data, so cross-margin may show empty until
-            // the next portfolio refresh populates AccountBalance rows.
+            // Use FIFO remaining quantity as a proxy; real cross-margin balances
+            // come from AccountBalance rows populated by PortfolioProcessor refresh.
             let allTrades = try fetchTrades(matching: .crossMargin)
             let tradesByAsset = Dictionary(grouping: allTrades) { $0.asset }
             var quantities: [String: Double] = [:]
             var interest: [String: Double] = [:]
             for (asset, assetTrades) in tradesByAsset {
                 let result = fifoCalculator.calculate(assetTrades.map(Self.toFIFOTrade))
-                quantities[asset] = result.totalRemainingQuantity > 0 ? result.totalRemainingQuantity : nil
+                guard result.totalRemainingQuantity > 0 else { continue }
+                quantities[asset] = result.totalRemainingQuantity
             }
             return (quantities, interest)
         }
@@ -215,6 +223,80 @@ class HoldingsProcessor: Processor {
 
     private func quantityKeys(_ dict: [String: Double], exclude: String) -> [String] {
         dict.keys.filter { $0 != exclude }.map { "\($0)USDT" }
+    }
+
+    // MARK: - Sync & Persistence Helpers
+
+    private func fetchSyncMap() -> [String: Int64] {
+        let descriptor = FetchDescriptor<SyncMetadata>()
+        guard let metadata = try? modelContext.fetch(descriptor) else { return [:] }
+        return Dictionary(metadata.map { ($0.symbol, $0.lastTradeId) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    private func persistSyncUpdates(_ updates: [SyncUpdate]) {
+        for update in updates {
+            let entity = SyncMetadata(
+                symbol: update.symbol,
+                lastTradeId: update.lastTradeId,
+                lastSyncDate: Date()
+            )
+            modelContext.insert(entity)
+        }
+        try? modelContext.save()
+    }
+
+    private func persistTrades(_ mappedTrades: [MappedTrade], mode: TradingMode) throws {
+        for mapped in mappedTrades {
+            let trade = Trade(
+                binanceTradeId: mapped.binanceTradeId,
+                symbol: mapped.symbol,
+                asset: mapped.asset,
+                price: mapped.price,
+                quantity: mapped.quantity,
+                quoteQuantity: mapped.quoteQuantity,
+                commission: mapped.commission,
+                commissionAsset: mapped.commissionAsset,
+                timestamp: mapped.timestamp,
+                isBuyer: mapped.isBuyer,
+                orderId: mapped.orderId,
+                tradingMode: mode
+            )
+            modelContext.insert(trade)
+        }
+        try modelContext.save()
+    }
+
+    private func persistIsolatedMarginBalances(_ balances: [IsolatedMarginBalance]) throws {
+        // Delete existing persisted MarginBalance rows
+        try modelContext.delete(model: MarginBalance.self)
+        for balance in balances {
+            modelContext.insert(MarginBalance(
+                symbol: balance.symbol,
+                isolatedMarginKey: balance.symbol,
+                asset: balance.asset,
+                borrowed: balance.borrowed,
+                free: balance.free,
+                locked: balance.locked,
+                interest: balance.interest
+            ))
+        }
+        try modelContext.save()
+    }
+
+    private func fetchAllIsolatedMarginBalancesLive() async throws -> [IsolatedMarginBalance] {
+        let persisted = try fetchPersistedMarginBalances()
+        let knownSymbols = Set(persisted.map { $0.symbol })
+
+        var results: [IsolatedMarginBalance] = []
+
+        for symbol in knownSymbols {
+            guard let liveBalances = try await marginBalanceService.fetchIsolatedMarginBalances(symbol) else {
+                continue
+            }
+            results.append(contentsOf: liveBalances)
+        }
+
+        return results
     }
 
     // MARK: - Portfolio Data

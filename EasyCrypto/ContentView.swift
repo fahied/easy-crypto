@@ -47,7 +47,9 @@ struct ContentView: View {
                             priceService: priceService,
                             fifoCalculator: fifoCalculator,
                             modelContainer: modelContainer,
-                            balanceService: .live(apiClient: apiClient)
+                            balanceService: .live(apiClient: apiClient),
+                            marginTradeImportService: .live(apiClient: apiClient),
+                            marginBalanceService: .live(apiClient: apiClient)
                         )
                     )
                     .navigationTitle("Portfolio")
@@ -183,7 +185,9 @@ private struct HoldingsTab: View {
                 processor: HoldingsProcessor(
                     priceService: priceService,
                     fifoCalculator: fifoCalculator,
-                    modelContainer: modelContainer
+                    modelContainer: modelContainer,
+                    marginTradeImportService: .live(apiClient: apiClient),
+                    marginBalanceService: .live(apiClient: apiClient)
                 )
             )
             .navigationTitle("Holdings")

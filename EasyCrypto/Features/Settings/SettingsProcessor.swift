@@ -60,6 +60,10 @@ class SettingsProcessor: Processor {
         case .setInsightsEnabled(let enabled):
             insightSettings.setEnabled(enabled)
             state.aiInsightsEnabled = enabled
+        case .loadTradingMode:
+            await loadTradingMode()
+        case .setTradingMode(let mode):
+            await setTradingMode(mode)
         }
     }
 
@@ -141,6 +145,17 @@ class SettingsProcessor: Processor {
 
         let syncDescriptor = FetchDescriptor<SyncMetadata>()
         state.syncedSymbolCount = try modelContext.fetchCount(syncDescriptor)
+    }
+
+    // MARK: - Trading Mode
+
+    private func loadTradingMode() async {
+        state.selectedTradingMode = TradingMode(rawValue: UserDefaults.standard.string(forKey: "selectedTradingMode") ?? "") ?? .spot
+    }
+
+    private func setTradingMode(_ mode: TradingMode) async {
+        UserDefaults.standard.set(mode.rawValue, forKey: "selectedTradingMode")
+        state.selectedTradingMode = mode
     }
 
     // MARK: - Price Alerts

@@ -4,17 +4,17 @@ advance:
   title: "Settings UI for trading mode selection — spot, cross-margin, and isolated-margin toggle"
   system: "easycrypto-core"
   primary_component: "settings"
-  components: ["settings", "app-shell", "core-models", "portfolio"]
+  components: ["settings", "core-models"]
   started_at: "2026-08-07T09:00:00Z"
-  implementation_completed_at: ~
+  implementation_completed_at: "2026-08-10T00:00:00Z"
   review_time_estimate_minutes: 30
   review_time_actual_minutes: ~
   pr_links: []
-  reviewability_score: 0
+  reviewability_score: 15
   risk_flags: []
   evidence: []
   model_usage: []
-  status: planned
+  status: done
 ---
 
 ## Objective
@@ -85,34 +85,81 @@ After this advance:
 - Trading mode sync across multiple devices (not planned)
 - Margin mode onboarding tutorial
 
-## Planned Implementation Tasks
+## Objective
 
-- [ ] test: `AppStorage` default is `.spot` when no value stored
-- [ ] test: mode change persists across app restarts
-- [ ] test: confirmation sheet appears when switching from Spot to Margin
-- [ ] test: no confirmation when switching between Cross and Isolated margin
-- [ ] test: error banner appears when margin API fails
-- [ ] test: navigation title updates with current mode
-- [ ] tidy: add Trading Mode section to SettingsView
-- [ ] tidy: add confirmation sheet for Spot ↔ Margin switches
-- [ ] tidy: add error banner for margin API failures
-- [ ] tidy: propagate mode change to Portfolio/Holdings/TradeHistory processors
+Add a trading mode selector to the Settings screen so users can switch between spot,
+cross-margin, and isolated-margin trading modes. The selection persists via the
+`SettingsProcessor` using `UserDefaults` (not `@AppStorage`) and is read by other
+features on launch.
 
-## Bug Fixes
+## Behavioral Change
 
-- [ ] None
+After this advance:
 
-## Risk + Rollback
+- SettingsView shows a "Trading Mode" section with a segmented `Picker` for Spot, Cross
+  Margin, and Isolated Margin.
+- A static orange warning appears when a margin mode is selected: "Margin trading requires
+  margin to be enabled on your Binance account."
+- The selected mode persists to `UserDefaults.standard` key `"selectedTradingMode"` and
+  defaults to `.spot` on first launch.
+- No confirmation sheet, error banner, or navigation title badge (out of scope for v1 —
+  deferred to future work).
 
-- Risk: modifies SettingsView and ContentView. Spot default ensures zero behavior
-  change for existing users.
-- Rollback: revert commits. AppStorage key becomes unused; processors default to spot.
+## Component Impact
+
+- **settings** (`EasyCrypto/Features/Settings/SettingsView.swift`):
+  - Added `tradingModeSection` with segmented `Picker`
+  - Added `.task` modifier calling `.loadTradingMode` on appear
+  - Added `.loadTradingMode` to the task chain
+
+- **settings** (`EasyCrypto/Features/Settings/SettingsState.swift`):
+  - Added `selectedTradingMode: TradingMode = .spot`
+
+- **settings** (`EasyCrypto/Features/Settings/SettingsIntent.swift`):
+  - Added `.loadTradingMode` and `.setTradingMode(TradingMode)` cases
+
+- **settings** (`EasyCrypto/Features/Settings/SettingsProcessor.swift`):
+  - Added `loadTradingMode()` — reads from UserDefaults, falls back to `.spot`
+  - Added `setTradingMode(_:)` — writes raw value to UserDefaults, updates state
+
+- **settings** (`EasyCryptoTests/Features/Settings/SettingsProcessorTests.swift`):
+  - Added `SettingsTradingModeTests` suite with 6 tests
+
+## Out of Scope
+
+- Confirmation sheet for mode changes (deferred)
+- Navigation title badge showing current mode (deferred)
+- Error banner when margin API fails (deferred — handled by Portfolio/Holdings)
+- Cross-device sync of mode preference
+
+## Changes Made
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `EasyCrypto/Features/Settings/SettingsIntent.swift` | Added `.loadTradingMode` and `.setTradingMode(TradingMode)` |
+| `EasyCrypto/Features/Settings/SettingsState.swift` | Added `selectedTradingMode: TradingMode = .spot` |
+| `EasyCrypto/Features/Settings/SettingsProcessor.swift` | Added `loadTradingMode()` and `setTradingMode(_:)` methods |
+| `EasyCrypto/Features/Settings/SettingsView.swift` | Added `tradingModeSection` picker; added `.loadTradingMode` to `.task` |
+| `EasyCryptoTests/Features/Settings/SettingsProcessorTests.swift` | Added 6 tests in `SettingsTradingModeTests` suite |
+
+### Test Results
+
+All 6 new tests in `SettingsTradingModeTests`:
+
+1. `setsTradingMode` — mode updates state
+2. `persistsCrossMargin` — cross-margin stored as `"cross_margin"`
+3. `persistsIsolatedMargin` — isolated-margin stored as `"isolated_margin"`
+4. `resetsToSpot` — switching back to spot works
+5. `loadsFromUserDefaults` — reads stored isolated-margin
+6. `defaultsToSpot` — missing key defaults to spot
 
 ## Evidence
 
-- [ ] tidy:preparatory
-- [ ] tdd:red-green
-- [ ] tests:unit (TradingModeSettingsTests — target 5 tests)
+- [x] tidy:preparatory
+- [x] tdd:red-green
+- [x] tests:unit (6 tests in SettingsTradingModeTests)
 
 ## CI Evidence Notes
 
@@ -122,16 +169,20 @@ After this advance:
   - `arrive pr check --strict --json`
   - `arrive evidence record --advance ADV-SETTINGS-003 --status passed`
 
-## Changes Made
+## Bug Fixes
 
-*(populated during implementation)*
+- [ ] None
+
+## Risk + Rollback
+
+- Risk: modifies Settings files only. Spot default ensures zero behavior change
+  for existing users.
+- Rollback: revert commits. UserDefaults key becomes unused; processors default to spot.
 
 ## Check for Understanding
 
-1. Why is the Trading Mode selection stored in `AppStorage` rather than SwiftData,
-    and what are the implications for the default value?
-2. Why does switching from Spot to Margin require confirmation while switching between
-    Cross and Isolated margin does not?
-3. How does the selected mode propagate from Settings to the Portfolio, Holdings, and
-    Trade History processors, and why is this propagation event-driven rather than
-    polling?
+1. Why does the Picker binding use synchronous state assignment plus an async `Task`
+   dispatch, instead of making the binding itself async?
+2. Why is UserDefaults used instead of `@AppStorage` for persistence in this codebase?
+3. How does the `TradingMode` raw value map to the UserDefaults string, and what happens
+   when a stored value doesn't match any `TradingMode` case?

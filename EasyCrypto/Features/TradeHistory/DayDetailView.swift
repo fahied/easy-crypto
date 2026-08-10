@@ -161,15 +161,17 @@ private struct TransactionBreakdownCard: View {
             details: [
                 DayTradeDetail(
                     id: "BTCUSDT-3", asset: "BTC", symbol: "BTCUSDT",
-                    timestamp: Date(), isBuyer: false,
+                    timestamp: Date(), isBuyer: false, tradingMode: .crossMargin,
                     price: 67000, quantity: 0.2, total: 13400,
-                    costBasisPrice: 48750, invested: 9750, realizedPnL: 3650
+                    costBasisPrice: 48750, invested: 9750, realizedPnL: 3650,
+                    borrowingFee: 19.50, marginAdjustedPnL: 3630.50
                 ),
                 DayTradeDetail(
                     id: "ETHUSDT-4", asset: "ETH", symbol: "ETHUSDT",
-                    timestamp: Date(), isBuyer: true,
+                    timestamp: Date(), isBuyer: true, tradingMode: .crossMargin,
                     price: 3200, quantity: 5.0, total: 16000,
-                    costBasisPrice: nil, invested: 16000, realizedPnL: nil
+                    costBasisPrice: nil, invested: 16000, realizedPnL: nil,
+                    borrowingFee: nil, marginAdjustedPnL: nil
                 )
             ]
         )
@@ -184,9 +186,10 @@ private struct TransactionBreakdownCard: View {
             details: [
                 DayTradeDetail(
                     id: "SOLUSDT-9", asset: "SOL", symbol: "SOLUSDT",
-                    timestamp: Date(), isBuyer: false,
+                    timestamp: Date(), isBuyer: false, tradingMode: .isolatedMargin,
                     price: 95, quantity: 30, total: 2850,
-                    costBasisPrice: 120, invested: 3600, realizedPnL: -750
+                    costBasisPrice: 120, invested: 3600, realizedPnL: -750,
+                    borrowingFee: 12.00, marginAdjustedPnL: -762
                 )
             ]
         )

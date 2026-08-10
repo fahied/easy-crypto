@@ -78,7 +78,7 @@ extension MarginTradeImportService {
         let crossFromId = existingSync["cross"]
 
         let account = try await apiClient.fetchMarginAccount()
-        let balanceAssets = account.userAssets
+        let balanceAssets = (account.userAssets ?? [])
             .map(\.asset)
             .filter { $0 != "USDT" }
         let previouslySyncedAssets = existingSync.keys
