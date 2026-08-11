@@ -96,7 +96,7 @@ class HoldingsProcessor: Processor {
 
     private func loadPersistedSpotBalances() throws -> [String: Double] {
         let descriptor = FetchDescriptor<AccountBalance>()
-        let balances = try modelContext.fetch(descriptor)
+        let balances = try modelContext.fetch(descriptor)   
         return Dictionary(
             balances.map { ($0.asset, $0.quantity) },
             uniquingKeysWith: { first, _ in first }

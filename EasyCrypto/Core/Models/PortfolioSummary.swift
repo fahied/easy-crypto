@@ -98,6 +98,18 @@ nonisolated struct PortfolioSummary: Equatable, Sendable {
         self.crossMargin = .empty
         self.isolatedMargin = .empty
     }
+
+    init(from mode: ModeSummary) {
+        self.totalInvestedUSDT = mode.investedUSDT
+        self.totalCurrentValueUSDT = mode.currentValueUSDT
+        self.totalUnrealizedPnL = mode.unrealizedPnL
+        self.totalUnrealizedPnLPercent = mode.unrealizedPnLPercent
+        self.totalRealizedPnL = mode.realizedPnL
+        self.holdingsCount = mode.holdingsCount
+        self.spot = .empty
+        self.crossMargin = .empty
+        self.isolatedMargin = .empty
+    }
 }
 
 extension PortfolioSummary.ModeSummary {

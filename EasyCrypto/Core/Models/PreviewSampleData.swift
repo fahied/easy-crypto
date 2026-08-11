@@ -96,6 +96,44 @@ enum PreviewSampleData {
         PortfolioSummary(from: sampleHoldings)
     }
 
+    static var samplePortfolioSummary: PortfolioSummary {
+        let spot = PortfolioSummary.ModeSummary(
+            investedUSDT: 51250,
+            currentValueUSDT: 67250,
+            unrealizedPnL: 16000,
+            unrealizedPnLPercent: 31.21,
+            realizedPnL: 4400,
+            holdingsCount: 3
+        )
+        let crossMargin = PortfolioSummary.ModeSummary(
+            investedUSDT: 25000,
+            currentValueUSDT: 31000,
+            unrealizedPnL: 6000,
+            unrealizedPnLPercent: 24.0,
+            realizedPnL: 1200,
+            holdingsCount: 2
+        )
+        let isolatedMargin = PortfolioSummary.ModeSummary(
+            investedUSDT: 15000,
+            currentValueUSDT: 18000,
+            unrealizedPnL: 3000,
+            unrealizedPnLPercent: 20.0,
+            realizedPnL: 500,
+            holdingsCount: 1
+        )
+        return PortfolioSummary(
+            totalInvestedUSDT: spot.investedUSDT + crossMargin.investedUSDT + isolatedMargin.investedUSDT,
+            totalCurrentValueUSDT: spot.currentValueUSDT + crossMargin.currentValueUSDT + isolatedMargin.currentValueUSDT,
+            totalUnrealizedPnL: spot.unrealizedPnL + crossMargin.unrealizedPnL + isolatedMargin.unrealizedPnL,
+            totalUnrealizedPnLPercent: 27.0,
+            totalRealizedPnL: spot.realizedPnL + crossMargin.realizedPnL + isolatedMargin.realizedPnL,
+            holdingsCount: spot.holdingsCount + crossMargin.holdingsCount + isolatedMargin.holdingsCount,
+            spot: spot,
+            crossMargin: crossMargin,
+            isolatedMargin: isolatedMargin
+        )
+    }
+
     // MARK: - Sample Klines
 
     static var sampleKlines: [Kline] {

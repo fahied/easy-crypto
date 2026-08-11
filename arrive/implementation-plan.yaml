@@ -162,13 +162,21 @@ passes:
     - id: ADV-PORTFOLIO-003
       advance_id: ADV-PORTFOLIO-003
       title: Portfolio summary metrics aggregate across all modes, no holdings list
-      status: in_progress
+      status: done
       owner: null
       dependencies: []
       notes: null
     - id: ADV-PORTFOLIO-004
       advance_id: ADV-PORTFOLIO-004
       title: Remove holdings list from Portfolio tab — Holdings tab is single source of truth
+      status: done
+      owner: null
+      dependencies:
+      - ADV-PORTFOLIO-003
+      notes: null
+    - id: ADV-PORTFOLIO-005
+      advance_id: ADV-PORTFOLIO-005
+      title: Portfolio tab mode-segmented UI — Overview / Spot / Cross Margin / Isolated Margin
       status: done
       owner: null
       dependencies:

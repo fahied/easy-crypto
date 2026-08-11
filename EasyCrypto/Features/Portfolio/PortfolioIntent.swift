@@ -16,4 +16,5 @@ enum PortfolioIntent: Intent {
     case refresh
     case loadPersisted
     case sortHoldings(by: SortCriteria)
+    case selectTab(PortfolioTab)
 }

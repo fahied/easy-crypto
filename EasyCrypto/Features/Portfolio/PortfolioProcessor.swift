@@ -47,6 +47,8 @@ class PortfolioProcessor: Processor {
             await loadPersistedData()
         case .sortHoldings(let by):
             state.sortBy = by
+        case .selectTab:
+            break
         }
     }
 
@@ -374,6 +376,21 @@ class PortfolioProcessor: Processor {
             modelContext.insert(balance)
         }
         try modelContext.save()
+    }
+
+    // MARK: - Summary for Tab
+
+    func summary(for tab: PortfolioTab) -> PortfolioSummary {
+        switch tab {
+        case .overview:
+            return state.summary
+        case .spot:
+            return PortfolioSummary(from: state.summary.spot)
+        case .crossMargin:
+            return PortfolioSummary(from: state.summary.crossMargin)
+        case .isolatedMargin:
+            return PortfolioSummary(from: state.summary.isolatedMargin)
+        }
     }
 
     // MARK: - Trade Mapping
