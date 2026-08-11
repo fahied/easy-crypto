@@ -14,5 +14,6 @@ enum SortCriteria: Sendable, CaseIterable {
 
 enum PortfolioIntent: Intent {
     case refresh
+    case loadPersisted
     case sortHoldings(by: SortCriteria)
 }

@@ -35,13 +35,15 @@ class HoldingsProcessor: Processor {
     func handle(_ intent: HoldingsIntent) async {
         switch intent {
         case .loadHoldings:
-            await loadHoldings()
+            await loadHoldings(syncFromExchange: true)
+        case .loadPersisted:
+            await loadHoldings(syncFromExchange: false)
         case .setTradingMode(let mode):
             state.selectedTradingMode = mode
         }
     }
 
-    private func loadHoldings() async {
+    private func loadHoldings(syncFromExchange: Bool) async {
         state.isLoading = true
         state.error = nil
 
@@ -50,9 +52,13 @@ class HoldingsProcessor: Processor {
 
             switch state.selectedTradingMode {
             case .spot:
-                portfolioData = try await loadSpotHoldings()
+                portfolioData = try await loadSpotHoldings(
+                    usePersistedBalances: !syncFromExchange
+                )
             case .crossMargin, .isolatedMargin:
-                portfolioData = try await loadMarginHoldings()
+                portfolioData = try await loadMarginHoldings(
+                    syncFromExchange: syncFromExchange
+                )
             }
 
             state.holdings = portfolioData.holdings.sorted { $0.currentValueUSDT > $1.currentValueUSDT }
@@ -65,10 +71,17 @@ class HoldingsProcessor: Processor {
 
     // MARK: - Spot Holdings
 
-    private func loadSpotHoldings() async throws -> PortfolioData {
+    private func loadSpotHoldings(usePersistedBalances: Bool = false) async throws -> PortfolioData {
         let trades = try fetchTrades(matching: .spot)
         let fifoByAsset = computeFIFO(trades)
-        let quantities = try loadSpotQuantities()
+
+        let quantities: [String: Double]
+        if usePersistedBalances {
+            quantities = try loadPersistedSpotBalances()
+        } else {
+            quantities = try loadSpotQuantities()
+        }
+
         let prices = try await priceService.fetchPrices(PriceCatalog.usdtSymbols(from: Array(quantities.keys), exclude: "USDT"))
 
         return PortfolioData(
@@ -81,20 +94,31 @@ class HoldingsProcessor: Processor {
         )
     }
 
+    private func loadPersistedSpotBalances() throws -> [String: Double] {
+        let descriptor = FetchDescriptor<AccountBalance>()
+        let balances = try modelContext.fetch(descriptor)
+        return Dictionary(
+            balances.map { ($0.asset, $0.quantity) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
     // MARK: - Margin Holdings
 
-    private func loadMarginHoldings() async throws -> PortfolioData {
+    private func loadMarginHoldings(syncFromExchange: Bool) async throws -> PortfolioData {
         let mode = state.selectedTradingMode
 
-        // Sync fresh trades and balances from the exchange before loading.
-        let syncMap = fetchSyncMap()
-        let importResult = try await marginTradeImportService.sync(mode, syncMap)
-        persistSyncUpdates(importResult.syncUpdates)
-        try persistTrades(importResult.mappedTrades, mode: mode)
+        if syncFromExchange {
+            // Sync fresh trades and balances from the exchange before loading.
+            let syncMap = fetchSyncMap()
+            let importResult = try await marginTradeImportService.sync(mode, syncMap)
+            persistSyncUpdates(importResult.syncUpdates)
+            try persistTrades(importResult.mappedTrades, mode: mode)
 
-        if mode == .isolatedMargin {
-            let isolatedBalances = try await fetchAllIsolatedMarginBalancesLive()
-            try persistIsolatedMarginBalances(isolatedBalances)
+            if mode == .isolatedMargin {
+                let isolatedBalances = try await fetchAllIsolatedMarginBalancesLive()
+                try persistIsolatedMarginBalances(isolatedBalances)
+            }
         }
 
         let trades = try fetchTrades(matching: mode)

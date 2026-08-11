@@ -44,6 +44,12 @@ struct PortfolioView: View {
                 await processor.handle(.refresh)
             }
         }
+        .onAppear {
+            // Show cached data immediately; refresh button does a full sync.
+            if !state.isLoading {
+                Task { await processor.handle(.loadPersisted) }
+            }
+        }
     }
 
     // MARK: - Portfolio Content

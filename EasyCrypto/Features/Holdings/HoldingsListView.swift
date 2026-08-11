@@ -22,6 +22,12 @@ struct HoldingsListView: View {
             .padding(.horizontal)
             .padding(.bottom, 20)
         }
+        .onAppear {
+            // Show cached data immediately; Refresh Now triggers full exchange sync.
+            if !state.isLoading {
+                processor.send(.loadPersisted)
+            }
+        }
     }
 
     // MARK: - Trading Mode Bar
