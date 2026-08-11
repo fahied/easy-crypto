@@ -6,15 +6,15 @@ advance:
   primary_component: "portfolio"
   components: ["portfolio", "core-models", "core-services"]
   started_at: "2026-08-10"
-  implementation_completed_at: ~
+  implementation_completed_at: "2026-08-11"
   review_time_estimate_minutes: 20
   review_time_actual_minutes: ~
   pr_links: []
-  reviewability_score: 20
+  reviewability_score: 25
   risk_flags: []
-  evidence: []
+  evidence: ["tidy:removed-dead-code", "preview:updated", "model:added-crossmarginbalance"]
   model_usage: []
-  status: planned
+  status: complete
 ---
 
 ## Objective

@@ -50,19 +50,20 @@ nonisolated struct CrossMarginAccountData: Sendable {
 
     init(from account: BinanceMarginAccount) throws {
         self.marginLevel = Double(account.marginLevel) ?? 0
-        self.totalAsset = Double(account.totalAsset) ?? 0
-        self.totalLiability = Double(account.totalLiability) ?? 0
-        self.totalNetAsset = Double(account.totalNetAsset) ?? 0
+        self.totalAsset = Double(account.totalAsset ?? "") ?? 0
+        self.totalLiability = Double(account.totalLiability ?? "") ?? 0
+        self.totalNetAsset = Double(account.totalNetAsset ?? "") ?? 0
         self.totalAssetOfBtc = Double(account.totalAssetOfBtc) ?? 0
         self.totalLiabilityOfBtc = Double(account.totalLiabilityOfBtc) ?? 0
         self.totalNetAssetOfBtc = Double(account.totalNetAssetOfBtc) ?? 0
-        self.maxBorrowable = Double(account.maxBorrowable) ?? 0
+        self.maxBorrowable = Double(account.maxBorrowable ?? "") ?? 0
         self.maintained = account.maintained.flatMap(Double.init)
 
         var interestMap: [String: Double] = [:]
         for entry in account.userAssets ?? [] {
+            guard let asset = entry.asset else { continue }
             if let interest = Double(entry.interest), interest != 0 {
-                interestMap[entry.asset] = interest
+                interestMap[asset] = interest
             }
         }
         self.perAssetInterest = interestMap

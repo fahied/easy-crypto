@@ -137,7 +137,8 @@ struct HoldingsListView: View {
 
 #Preview("Cross margin mode") {
     let container = try! ModelContainer(
-        for: Trade.self, SyncMetadata.self, AccountBalance.self,
+        for: Trade.self, SyncMetadata.self, AccountBalance.self, MarginBalance.self,
+             CrossMarginBalance.self,
         configurations: ModelConfiguration(isStoredInMemoryOnly: true)
     )
     let processor = HoldingsProcessor(
@@ -164,6 +165,7 @@ struct HoldingsListView: View {
                     perAssetInterest: ["BTC": 0.001, "ETH": 0.002]
                 )
             },
+            fetchCrossMarginBalances: { [] },
             fetchIsolatedMarginBalances: { _ in nil }
         )
     )
@@ -190,6 +192,7 @@ struct HoldingsListView: View {
         marginTradeImportService: .noop,
         marginBalanceService: MarginBalanceService(
             fetchCrossMarginAccount: { nil },
+            fetchCrossMarginBalances: { [] },
             fetchIsolatedMarginBalances: { _ in nil }
         )
     )

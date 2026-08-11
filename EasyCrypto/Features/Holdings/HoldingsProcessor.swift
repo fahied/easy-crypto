@@ -69,7 +69,7 @@ class HoldingsProcessor: Processor {
         let trades = try fetchTrades(matching: .spot)
         let fifoByAsset = computeFIFO(trades)
         let quantities = try loadSpotQuantities()
-        let prices = try await priceService.fetchPrices(quantityKeys(quantities, exclude: "USDT"))
+        let prices = try await priceService.fetchPrices(PriceCatalog.usdtSymbols(from: Array(quantities.keys), exclude: "USDT"))
 
         return PortfolioData(
             holdings: buildHoldings(
@@ -118,7 +118,7 @@ class HoldingsProcessor: Processor {
             marginAdjustedPnLByAsset[asset] = marginResult.marginAdjustedRealizedPnL
         }
 
-        let prices = try await priceService.fetchPrices(quantityKeys(quantities, exclude: "USDT"))
+        let prices = try await priceService.fetchPrices(PriceCatalog.usdtSymbols(from: Array(quantities.keys), exclude: "USDT"))
 
         return PortfolioData(
             holdings: buildHoldings(
@@ -219,10 +219,6 @@ class HoldingsProcessor: Processor {
         let descriptor = FetchDescriptor<MarginBalance>()
         guard let balances = try? modelContext.fetch(descriptor) else { return [] }
         return balances
-    }
-
-    private func quantityKeys(_ dict: [String: Double], exclude: String) -> [String] {
-        dict.keys.filter { $0 != exclude }.map { "\($0)USDT" }
     }
 
     // MARK: - Sync & Persistence Helpers

@@ -1,6 +1,5 @@
 //
 //  PortfolioSummary.swift
-//  EasyCrypto
 //
 
 import Foundation
@@ -17,13 +16,32 @@ nonisolated struct PortfolioSummary: Equatable, Sendable {
         totalRealizedPnL + totalUnrealizedPnL
     }
 
-        var isEmpty: Bool {
-            holdingsCount == 0
-        }
-    
+    var isEmpty: Bool {
+        holdingsCount == 0
+    }
+
     var totalPnLPercent: Double {
         totalInvestedUSDT > 0 ? (totalPnL / totalInvestedUSDT) * 100.0 : 0.0
     }
+
+    // MARK: - Per-Mode Breakdown
+
+    let spot: ModeSummary
+    let crossMargin: ModeSummary
+    let isolatedMargin: ModeSummary
+
+    struct ModeSummary: Equatable, Sendable {
+        let investedUSDT: Double
+        let currentValueUSDT: Double
+        let unrealizedPnL: Double
+        let unrealizedPnLPercent: Double
+        let realizedPnL: Double
+        let holdingsCount: Int
+
+        var isActive: Bool { holdingsCount > 0 }
+    }
+
+    // MARK: - Initializers
 
     static let empty = PortfolioSummary(
         totalInvestedUSDT: 0,
@@ -31,7 +49,10 @@ nonisolated struct PortfolioSummary: Equatable, Sendable {
         totalUnrealizedPnL: 0,
         totalUnrealizedPnLPercent: 0,
         totalRealizedPnL: 0,
-        holdingsCount: 0
+        holdingsCount: 0,
+        spot: .empty,
+        crossMargin: .empty,
+        isolatedMargin: .empty
     )
 
     init(
@@ -40,7 +61,10 @@ nonisolated struct PortfolioSummary: Equatable, Sendable {
         totalUnrealizedPnL: Double,
         totalUnrealizedPnLPercent: Double,
         totalRealizedPnL: Double,
-        holdingsCount: Int
+        holdingsCount: Int,
+        spot: ModeSummary,
+        crossMargin: ModeSummary,
+        isolatedMargin: ModeSummary
     ) {
         self.totalInvestedUSDT = totalInvestedUSDT
         self.totalCurrentValueUSDT = totalCurrentValueUSDT
@@ -48,6 +72,9 @@ nonisolated struct PortfolioSummary: Equatable, Sendable {
         self.totalUnrealizedPnLPercent = totalUnrealizedPnLPercent
         self.totalRealizedPnL = totalRealizedPnL
         self.holdingsCount = holdingsCount
+        self.spot = spot
+        self.crossMargin = crossMargin
+        self.isolatedMargin = isolatedMargin
     }
 
     init(from holdings: [Holding]) {
@@ -67,5 +94,19 @@ nonisolated struct PortfolioSummary: Equatable, Sendable {
         self.totalUnrealizedPnLPercent = percent
         self.totalRealizedPnL = realizedPnL
         self.holdingsCount = holdings.count
+        self.spot = .empty
+        self.crossMargin = .empty
+        self.isolatedMargin = .empty
     }
+}
+
+extension PortfolioSummary.ModeSummary {
+    static let empty = PortfolioSummary.ModeSummary(
+        investedUSDT: 0,
+        currentValueUSDT: 0,
+        unrealizedPnL: 0,
+        unrealizedPnLPercent: 0,
+        realizedPnL: 0,
+        holdingsCount: 0
+    )
 }

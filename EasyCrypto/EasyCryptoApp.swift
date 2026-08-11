@@ -25,7 +25,7 @@ struct EasyCryptoApp: App {
         let container = try! ModelContainer(
             for: Trade.self, SyncMetadata.self, PriceAlertConfig.self, NotificationLogEntry.self,
             CandleAlertState.self, AccountBalance.self, MarginBalance.self,
-            TradingInsight.self, InsightState.self
+            CrossMarginBalance.self, TradingInsight.self, InsightState.self
         )
         self.modelContainer = container
 

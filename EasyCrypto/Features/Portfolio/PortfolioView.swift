@@ -52,6 +52,7 @@ struct PortfolioView: View {
         ScrollView {
             VStack(spacing: Theme.sectionSpacing) {
                 summaryGrid
+                modeBreakdown
                 lastRefreshFooter
             }
             .padding(.horizontal)
@@ -105,6 +106,49 @@ struct PortfolioView: View {
             )
         }
         .animation(.spring(duration: 0.4), value: summary.totalCurrentValueUSDT)
+    }
+
+    // MARK: - Mode Breakdown
+
+    private var modeBreakdown: some View {
+        let summary = state.summary
+
+        return VStack(spacing: Theme.cardSpacing) {
+            ModeBreakdownRow(
+                label: "Spot",
+                icon: "circle.fill",
+                invested: summary.spot.investedUSDT,
+                currentValue: summary.spot.currentValueUSDT,
+                pnl: summary.spot.unrealizedPnL,
+                pnlPercent: summary.spot.unrealizedPnLPercent,
+                holdingsCount: summary.spot.holdingsCount,
+                isActive: summary.spot.isActive
+            )
+
+            ModeBreakdownRow(
+                label: "Cross Margin",
+                icon: "arrow.triangle.2.circlepath",
+                invested: summary.crossMargin.investedUSDT,
+                currentValue: summary.crossMargin.currentValueUSDT,
+                pnl: summary.crossMargin.unrealizedPnL,
+                pnlPercent: summary.crossMargin.unrealizedPnLPercent,
+                holdingsCount: summary.crossMargin.holdingsCount,
+                isActive: summary.crossMargin.isActive
+            )
+
+            ModeBreakdownRow(
+                label: "Isolated Margin",
+                icon: "square.circle",
+                invested: summary.isolatedMargin.investedUSDT,
+                currentValue: summary.isolatedMargin.currentValueUSDT,
+                pnl: summary.isolatedMargin.unrealizedPnL,
+                pnlPercent: summary.isolatedMargin.unrealizedPnLPercent,
+                holdingsCount: summary.isolatedMargin.holdingsCount,
+                isActive: summary.isolatedMargin.isActive
+            )
+        }
+        .padding()
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
     }
 
     // MARK: - Last Refresh Footer
@@ -167,11 +211,65 @@ struct PortfolioView: View {
     }
 }
 
+// MARK: - Mode Breakdown Row
+
+private struct ModeBreakdownRow: View {
+    let label: String
+    let icon: String
+    let invested: Double
+    let currentValue: Double
+    let pnl: Double
+    let pnlPercent: Double
+    let holdingsCount: Int
+    let isActive: Bool
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: icon)
+                .font(.caption)
+                .foregroundStyle(Theme.accent)
+                .frame(width: 20)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.subheadline.bold())
+                if isActive {
+                    Text("\(holdingsCount) asset\(holdingsCount == 1 ? "" : "s")")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if isActive {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(currentValue.usdtFormatted)
+                        .font(.subheadline.monospaced())
+                    HStack(spacing: 4) {
+                        Text(pnl.signedUsdtFormatted)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(pnl >= 0 ? Theme.profit : Theme.loss)
+                        Text("(\(pnlPercent.percentFormatted))")
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(pnl >= 0 ? Theme.profit : Theme.loss)
+                    }
+                }
+            } else {
+                Text("No positions")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.vertical, 6)
+    }
+}
+
 // MARK: - Previews
 
 #Preview("Loaded with holdings") {
     let container = try! ModelContainer(
-        for: Trade.self, SyncMetadata.self,
+        for: Trade.self, SyncMetadata.self, AccountBalance.self,
+             MarginBalance.self, CrossMarginBalance.self,
         configurations: ModelConfiguration(isStoredInMemoryOnly: true)
     )
     let processor = PortfolioProcessor(
@@ -190,7 +288,8 @@ struct PortfolioView: View {
 
 #Preview("Empty state") {
     let container = try! ModelContainer(
-        for: Trade.self, SyncMetadata.self,
+        for: Trade.self, SyncMetadata.self, AccountBalance.self,
+             MarginBalance.self, CrossMarginBalance.self,
         configurations: ModelConfiguration(isStoredInMemoryOnly: true)
     )
     let processor = PortfolioProcessor(
@@ -205,7 +304,8 @@ struct PortfolioView: View {
 
 #Preview("Loading") {
     let container = try! ModelContainer(
-        for: Trade.self, SyncMetadata.self,
+        for: Trade.self, SyncMetadata.self, AccountBalance.self,
+             MarginBalance.self, CrossMarginBalance.self,
         configurations: ModelConfiguration(isStoredInMemoryOnly: true)
     )
     let processor = PortfolioProcessor(
@@ -221,7 +321,8 @@ struct PortfolioView: View {
 
 #Preview("Error") {
     let container = try! ModelContainer(
-        for: Trade.self, SyncMetadata.self,
+        for: Trade.self, SyncMetadata.self, AccountBalance.self,
+             MarginBalance.self, CrossMarginBalance.self,
         configurations: ModelConfiguration(isStoredInMemoryOnly: true)
     )
     let processor = PortfolioProcessor(

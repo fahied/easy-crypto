@@ -74,22 +74,22 @@ nonisolated struct BinanceMarginAccount: Sendable, Codable {
     let totalAssetOfBtc: String
     let totalLiabilityOfBtc: String
     let totalNetAssetOfBtc: String
-    let totalAsset: String
-    let totalLiability: String
-    let totalNetAsset: String
-    let maxBorrowable: String
+    let totalAsset: String?
+    let totalLiability: String?
+    let totalNetAsset: String?
+    let maxBorrowable: String?
     let maintained: String?
     let totalCoin: String? = nil
 
     struct AssetEntry: Sendable, Codable {
-        let asset: String
+        let asset: String?
         let borrowed: String
         let free: String
         let locked: String
         let interest: String
         let netAsset: String
-        let netAssetOfBtc: String
-        let maxBorrowable: String
+        let netAssetOfBtc: String?
+        let maxBorrowable: String?
     }
     let userAssets: [AssetEntry]?
 }
@@ -136,15 +136,15 @@ nonisolated struct BinanceIsolatedMarginAccount: Sendable, Codable {
 
 /// GET /sapi/v1/margin/allAssets — all margin assets summary.
 nonisolated struct BinanceMarginAsset: Sendable, Codable, Identifiable {
-    let asset: String
-    let borrowed: String
-    let free: String
-    let locked: String
-    let netAsset: String
-    let maxBorrowable: String
+    let asset: String?
+    let borrowed: String?
+    let free: String?
+    let locked: String?
+    let netAsset: String?
+    let maxBorrowable: String?
     let maintained: String?
 
-    var id: String { asset }
+    var id: String { asset ?? UUID().uuidString }
 }
 
 /// GET /sapi/v1/margin/myTrades — margin trade history.

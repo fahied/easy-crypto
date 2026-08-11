@@ -34,12 +34,7 @@ extension MarginTradeImportService {
         category: "sync"
     )
 
-    nonisolated private static let bootstrapTrackedAssets = [
-        "BTC",
-        "SOL",
-        "IOTX",
-        "BNB",
-    ]
+    nonisolated private static let bootstrapTrackedAssets: [String] = []
 
     /// Delay between per-asset fetch requests to stay within Binance's weight limits.
     nonisolated private static let interRequestDelay: Duration = .milliseconds(300)
@@ -79,14 +74,16 @@ extension MarginTradeImportService {
 
         let account = try await apiClient.fetchMarginAccount()
         let balanceAssets = (account.userAssets ?? [])
-            .map(\.asset)
+            .compactMap(\.asset)
             .filter { $0 != "USDT" }
         let previouslySyncedAssets = existingSync.keys
             .filter { $0.hasSuffix("USDT") }
             .map { String($0.dropLast(4)) }
         let assets = Array(
             Set(balanceAssets + previouslySyncedAssets + bootstrapTrackedAssets)
-        ).sorted()
+        )
+        .filter { PriceCatalog.symbols.contains($0) }
+        .sorted()
 
         guard !assets.isEmpty else {
             logger.info("No non-USDT assets found for cross-margin sync")
@@ -161,7 +158,7 @@ extension MarginTradeImportService {
     ) async throws -> TradeImportResult {
         let allAssets = try await apiClient.fetchMarginAllAssets()
         let balanceAssets = allAssets
-            .map(\.asset)
+            .compactMap(\.asset)
             .filter { $0 != "USDT" }
         let previouslySyncedKeys = existingSync.keys
             .filter { $0.hasSuffix("USDT") }
