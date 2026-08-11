@@ -156,31 +156,44 @@ extension MarginTradeImportService {
         apiClient: BinanceAPIClient,
         existingSync: [String: Int64]
     ) async throws -> TradeImportResult {
-        let allAssets = try await apiClient.fetchMarginAllAssets()
-        let balanceAssets = allAssets
-            .compactMap(\.asset)
-            .filter { $0 != "USDT" }
-        let previouslySyncedKeys = existingSync.keys
+        // Isolated-margin positions live under `/sapi/v1/margin/isolated/account`,
+        // each entry keyed by its own trading-pair `symbol` (e.g. "DEXEUSDT") with
+        // a `baseAsset`/`quoteAsset` pair. `/sapi/v1/margin/allAssets` returns
+        // Binance-wide asset metadata (not the user's isolated positions), so it
+        // can never surface a symbol the account actually holds — that was the
+        // bug: newly opened isolated pairs (e.g. DEXEUSDT) were never discovered.
+        let isolatedAccount = try await apiClient.fetchIsolatedMarginAccount([])
+        let balanceEntries = isolatedAccount.assets.map { pair in
+            (symbol: pair.symbol, asset: pair.baseAsset.asset)
+        }
+        let previouslySyncedSymbols = existingSync.keys
             .filter { $0.hasSuffix("USDT") }
-            .map { String($0.dropLast(4)) }
-        let assets = Array(
-            Set(balanceAssets + previouslySyncedKeys + bootstrapTrackedAssets)
+        let symbolToAsset = Dictionary(
+            balanceEntries.map { ($0.symbol, $0.asset) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let symbols = Array(
+            Set(balanceEntries.map(\.symbol) + previouslySyncedSymbols)
         ).sorted()
 
-        guard !assets.isEmpty else {
-            logger.info("No non-USDT assets found for isolated-margin sync")
+        guard !symbols.isEmpty else {
+            logger.info("No isolated-margin symbols found for sync")
             return .empty
         }
 
-        logger.info("Isolated-margin: discovered \(assets.count) assets")
+        logger.info("Isolated-margin: discovered \(symbols.count) symbols")
 
         var allTrades: [MappedTrade] = []
         var allSyncUpdates: [SyncUpdate] = []
 
-        for (index, asset) in assets.enumerated() {
-            let symbol = "\(asset)USDT"
+        for (index, symbol) in symbols.enumerated() {
+            // Fall back to stripping "USDT" for symbols only known from a
+            // previous sync cursor (no live position, so no baseAsset from
+            // the isolated account response).
+            let asset = symbolToAsset[symbol] ?? String(symbol.dropLast(4))
             let lastTradeId = existingSync[symbol]
             let startFromId = lastTradeId.map { $0 + 1 }
+
 
             do {
                 let assetTrades = try await fetchMarginTradesWithRetry(
@@ -221,7 +234,7 @@ extension MarginTradeImportService {
                 continue
             }
 
-            if index < assets.count - 1 {
+            if index < symbols.count - 1 {
                 try? await Task.sleep(for: interRequestDelay)
             }
         }
@@ -233,6 +246,7 @@ extension MarginTradeImportService {
     }
 
     // MARK: - Retry
+
 
     /// Fetches all margin trades for a symbol with automatic pagination and rate-limit retry.
     private static func fetchMarginTradesWithRetry(

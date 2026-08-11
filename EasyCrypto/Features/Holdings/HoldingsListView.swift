@@ -14,12 +14,14 @@ struct HoldingsListView: View {
     private var state: HoldingsState { processor.state }
 
     var body: some View {
-        VStack(spacing: Theme.sectionSpacing) {
-            tradingModeBar
-            holdingsList
+        ScrollView {
+            VStack(spacing: Theme.sectionSpacing) {
+                tradingModeBar
+                holdingsList
+            }
+            .padding(.horizontal)
+            .padding(.bottom, 20)
         }
-        .padding(.horizontal)
-        .padding(.bottom, 20)
     }
 
     // MARK: - Trading Mode Bar
