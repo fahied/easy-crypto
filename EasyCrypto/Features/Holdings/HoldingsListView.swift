@@ -53,16 +53,12 @@ struct HoldingsListView: View {
             } else {
                 LazyVStack(spacing: Theme.cardSpacing) {
                     ForEach(state.holdings) { holding in
-                        if state.selectedTradingMode != .spot {
-                            MarginHoldingRow(
-                                holding: holding,
-                                tradingMode: state.selectedTradingMode,
-                                borrowedQuantity: holding.borrowedQuantity,
-                                liquidationPrice: holding.liquidationPrice.map { String(format: "%.0f", $0) }
-                            )
-                        } else {
-                            HoldingRow(holding: holding)
-                        }
+                        MarginHoldingRow(
+                            holding: holding,
+                            tradingMode: state.selectedTradingMode,
+                            borrowedQuantity: holding.borrowedQuantity,
+                            liquidationPrice: holding.liquidationPrice.map { String(format: "%.0f", $0) }
+                        )
                     }
                 }
                 .animation(.spring(duration: 0.35), value: state.holdings.map(\.asset))

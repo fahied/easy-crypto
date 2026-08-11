@@ -17,6 +17,10 @@ nonisolated struct PortfolioSummary: Equatable, Sendable {
         totalRealizedPnL + totalUnrealizedPnL
     }
 
+        var isEmpty: Bool {
+            holdingsCount == 0
+        }
+    
     var totalPnLPercent: Double {
         totalInvestedUSDT > 0 ? (totalPnL / totalInvestedUSDT) * 100.0 : 0.0
     }

@@ -64,7 +64,7 @@ passes:
     - id: ADV-APP-SHELL-002
       advance_id: ADV-APP-SHELL-002
       title: Background margin refresh — margin balance sync and margin price alerts
-      status: planned
+      status: done
       owner: null
       dependencies: []
       notes: null
@@ -159,6 +159,21 @@ passes:
       owner: null
       dependencies: []
       notes: null
+    - id: ADV-PORTFOLIO-003
+      advance_id: ADV-PORTFOLIO-003
+      title: Portfolio summary metrics aggregate across all modes, no holdings list
+      status: in_progress
+      owner: null
+      dependencies: []
+      notes: null
+    - id: ADV-PORTFOLIO-004
+      advance_id: ADV-PORTFOLIO-004
+      title: Remove holdings list from Portfolio tab — Holdings tab is single source of truth
+      status: done
+      owner: null
+      dependencies:
+      - ADV-PORTFOLIO-003
+      notes: null
     - id: ADV-SETTINGS-001
       advance_id: ADV-SETTINGS-001
       title: Settings UI for price alerts (permission, per-asset toggle, threshold)
@@ -183,7 +198,7 @@ passes:
     - id: ADV-TRADE-HISTORY-001
       advance_id: ADV-TRADE-HISTORY-001
       title: Margin trade history — filterable by trading mode with borrowing fee display
-      status: planned
+      status: done
       owner: null
       dependencies: []
       notes: null

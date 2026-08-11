@@ -14,11 +14,11 @@ struct PortfolioView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if state.isLoading && state.holdings.isEmpty {
+                if state.isLoading {
                     loadingView
-                } else if let error = state.error, state.holdings.isEmpty {
+                } else if let error = state.error {
                     errorView(error)
-                } else if state.holdings.isEmpty && !state.isLoading {
+                } else if state.summary.isEmpty {
                     emptyView
                 } else {
                     portfolioContent
@@ -52,9 +52,6 @@ struct PortfolioView: View {
         ScrollView {
             VStack(spacing: Theme.sectionSpacing) {
                 summaryGrid
-                tradingModeBar
-                sortBar
-                holdingsList
                 lastRefreshFooter
             }
             .padding(.horizontal)
@@ -108,64 +105,6 @@ struct PortfolioView: View {
             )
         }
         .animation(.spring(duration: 0.4), value: summary.totalCurrentValueUSDT)
-    }
-
-    // MARK: - Sort Bar
-
-    private var tradingModeBar: some View {
-        Picker("Trading Mode", selection: Binding(
-            get: { state.selectedTradingMode },
-            set: { [weak processor] newMode in
-                guard let processor else { return }
-                processor.state.selectedTradingMode = newMode
-                Task { await processor.handle(.refresh) }
-            }
-        )) {
-            ForEach(TradingMode.allCases, id: \.self) { mode in
-                Text(mode.displayName).tag(mode)
-            }
-        }
-        .pickerStyle(.segmented)
-    }
-
-    private var sortBar: some View {
-        Picker("Sort by", selection: Binding(
-            get: { state.sortCriteria },
-            set: { processor.send(.sortHoldings(by: $0)) }
-        )) {
-            ForEach(SortCriteria.allCases, id: \.self) { criteria in
-                Text(criteria.displayName).tag(criteria)
-            }
-        }
-        .pickerStyle(.segmented)
-    }
-
-    // MARK: - Holdings List
-
-    private var holdingsList: some View {
-        LazyVStack(spacing: Theme.cardSpacing) {
-            ForEach(state.holdings) { holding in
-                if state.selectedTradingMode != .spot {
-                    MarginHoldingRow(
-                        holding: holding,
-                        tradingMode: state.selectedTradingMode,
-                        borrowedQuantity: holding.borrowedQuantity,
-                        liquidationPrice: holding.liquidationPrice.map { String(format: "%.0f", $0) }
-                    )
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .trailing).combined(with: .opacity),
-                        removal: .move(edge: .leading).combined(with: .opacity)
-                    ))
-                } else {
-                    HoldingRow(holding: holding)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .trailing).combined(with: .opacity),
-                            removal: .move(edge: .leading).combined(with: .opacity)
-                        ))
-                }
-            }
-        }
-        .animation(.spring(duration: 0.35), value: state.holdings.map(\.asset))
     }
 
     // MARK: - Last Refresh Footer
@@ -228,62 +167,6 @@ struct PortfolioView: View {
     }
 }
 
-// MARK: - Holding Row
-
-struct HoldingRow: View {
-    let holding: Holding
-
-    var body: some View {
-        HStack(spacing: 12) {
-            // Asset icon placeholder
-            Circle()
-                .fill(Theme.accent.opacity(0.15))
-                .frame(width: 40, height: 40)
-                .overlay {
-                    Text(String(holding.asset.prefix(1)))
-                        .font(.headline.bold())
-                        .foregroundStyle(Theme.accent)
-                }
-
-            // Asset info
-            VStack(alignment: .leading, spacing: 2) {
-                Text(holding.asset)
-                    .font(.headline)
-                Text("\(holding.totalQuantity.quantityFormatted)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            // Value & P&L
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(holding.currentValueUSDT.usdtFormatted)
-                    .font(.headline)
-                PnLLabel(
-                    value: holding.unrealizedPnL,
-                    percentage: holding.unrealizedPnLPercent,
-                    font: .caption.bold()
-                )
-            }
-        }
-        .glassCard()
-    }
-}
-
-// MARK: - SortCriteria Display
-
-extension SortCriteria {
-    var displayName: String {
-        switch self {
-        case .value: "Value"
-        case .name: "Name"
-        case .pnl: "P&L"
-        case .pnlPercent: "P&L %"
-        }
-    }
-}
-
 // MARK: - Previews
 
 #Preview("Loaded with holdings") {
@@ -299,7 +182,6 @@ extension SortCriteria {
     )
     processor.state = PortfolioState(
         summary: PortfolioSummary(from: PreviewSampleData.sampleHoldings),
-        holdings: PreviewSampleData.sampleHoldings,
         lastRefreshDate: Date()
     )
     return PortfolioView(processor: processor)
