@@ -15,6 +15,7 @@ class HoldingsProcessor: Processor {
     private let fifoCalculator: FIFOCalculator
     private let modelContext: ModelContext
 
+    private let balanceService: BalanceService
     private let marginTradeImportService: MarginTradeImportService
     private let marginBalanceService: MarginBalanceService
 
@@ -22,12 +23,14 @@ class HoldingsProcessor: Processor {
         priceService: PriceService,
         fifoCalculator: FIFOCalculator,
         modelContainer: ModelContainer,
+        balanceService: BalanceService = .noop,
         marginTradeImportService: MarginTradeImportService = .noop,
         marginBalanceService: MarginBalanceService = .noop
     ) {
         self.priceService = priceService
         self.fifoCalculator = fifoCalculator
         self.modelContext = ModelContext(modelContainer)
+        self.balanceService = balanceService
         self.marginTradeImportService = marginTradeImportService
         self.marginBalanceService = marginBalanceService
     }
@@ -38,6 +41,8 @@ class HoldingsProcessor: Processor {
             await loadHoldings(syncFromExchange: true)
         case .loadPersisted:
             await loadHoldings(syncFromExchange: false)
+        case .filterByMode(let mode):
+            await filterByMode(mode)
         }
     }
 
@@ -46,13 +51,32 @@ class HoldingsProcessor: Processor {
         state.error = nil
 
         do {
-            let portfolioData = try await loadAggregatedHoldings(syncFromExchange: syncFromExchange)
-            state.holdings = portfolioData.holdings.sorted { $0.currentValueUSDT > $1.currentValueUSDT }
+            let holdings: [Holding]
+            switch state.selectedTradingMode {
+            case .spot:
+                holdings = try await loadSpotHoldings(usePersistedBalances: !syncFromExchange).holdings
+            case .crossMargin:
+                let data = try await loadMarginHoldings(mode: .crossMargin, syncFromExchange: syncFromExchange)
+                holdings = data.holdings
+            case .isolatedMargin:
+                let data = try await loadMarginHoldings(mode: .isolatedMargin, syncFromExchange: syncFromExchange)
+                holdings = data.holdings
+            }
+            state.holdings = holdings.sorted { $0.currentValueUSDT > $1.currentValueUSDT }
         } catch {
             state.error = error.localizedDescription
         }
 
         state.isLoading = false
+    }
+
+    // MARK: - Trading Mode Filter
+
+    private func filterByMode(_ mode: TradingMode) async {
+        state.selectedTradingMode = mode
+        state.holdings = []
+        state.error = nil
+        await loadHoldings(syncFromExchange: false)
     }
 
     // MARK: - Aggregated Holdings (Spot + Cross Margin + Isolated Margin)
@@ -72,12 +96,7 @@ class HoldingsProcessor: Processor {
         let trades = try fetchTrades(matching: .spot)
         let fifoByAsset = computeFIFO(trades)
 
-        let quantities: [String: Double]
-        if usePersistedBalances {
-            quantities = try loadPersistedSpotBalances()
-        } else {
-            quantities = try loadSpotQuantities()
-        }
+        let quantities = try await loadSpotQuantities(usePersisted: usePersistedBalances)
 
         let prices = try await priceService.fetchPrices(PriceCatalog.usdtSymbols(from: Array(quantities.keys), exclude: "USDT"))
 
@@ -111,8 +130,13 @@ class HoldingsProcessor: Processor {
             let importResult = try await marginTradeImportService.sync(mode, syncMap)
             persistSyncUpdates(importResult.syncUpdates)
             try persistTrades(importResult.mappedTrades, mode: mode)
+        }
 
-            if mode == .isolatedMargin {
+        // Isolated-margin quantities come exclusively from persisted balances, so they
+        // also have to be bootstrapped when the mode is shown without a full sync.
+        if mode == .isolatedMargin {
+            let hasPersistedBalances = try !fetchPersistedMarginBalances().isEmpty
+            if syncFromExchange || !hasPersistedBalances {
                 let isolatedBalances = try await fetchAllIsolatedMarginBalancesLive()
                 try persistIsolatedMarginBalances(isolatedBalances)
             }
@@ -154,27 +178,45 @@ class HoldingsProcessor: Processor {
 
     // MARK: - Quantity Loading
 
-    private func loadSpotQuantities() throws -> [String: Double] {
-        let persisted = try modelContext.fetch(FetchDescriptor<AccountBalance>())
-        let quantities = Dictionary(
-            persisted.map { ($0.asset, $0.quantity) },
-            uniquingKeysWith: { first, _ in first }
+    /// Spot quantities live in `AccountBalance`, which only this path writes — so an
+    /// empty table has to fall through to the exchange even on a persisted-only load.
+    /// A live fetch that returns nothing never clobbers what is already stored.
+    private func loadSpotQuantities(usePersisted: Bool) async throws -> [String: Double] {
+        let persisted = try loadPersistedSpotBalances()
+        if usePersisted && !persisted.isEmpty { return persisted }
+
+        let live = try await balanceService.fetchBalances()
+        guard !live.isEmpty else { return persisted }
+
+        try persistSpotBalances(live)
+        return live
+    }
+
+    private func persistSpotBalances(_ balances: [String: Double]) throws {
+        let spotMode = TradingMode.spot.rawValue
+        try modelContext.delete(
+            model: AccountBalance.self,
+            where: #Predicate { $0.tradingMode == spotMode }
         )
-        return quantities
+        for (asset, quantity) in balances {
+            modelContext.insert(AccountBalance(asset: asset, quantity: quantity))
+        }
+        try modelContext.save()
     }
 
     private func loadMarginQuantities(mode: TradingMode) async throws -> ([String: Double], [String: Double]) {
 
         if mode == .isolatedMargin {
-            // Load from persisted MarginBalance model for isolated margin
+            // Load from persisted MarginBalance model for isolated margin. The same asset
+            // can appear in several pairs (USDT especially), so sum rather than pick one.
             let marginBalances = try fetchPersistedMarginBalances()
             let quantities = Dictionary(
                 marginBalances.map { ($0.asset, $0.netAsset) },
-                uniquingKeysWith: { first, _ in first }
+                uniquingKeysWith: +
             )
             let interest = Dictionary(
                 marginBalances.map { ($0.asset, $0.interest) },
-                uniquingKeysWith: { first, _ in first }
+                uniquingKeysWith: +
             )
             return (quantities, interest)
         } else {
@@ -291,7 +333,10 @@ class HoldingsProcessor: Processor {
         for balance in balances {
             modelContext.insert(MarginBalance(
                 symbol: balance.symbol,
-                isolatedMarginKey: balance.symbol,
+                // Each pair yields a base *and* a quote asset row, so the uniqueness key
+                // must include the asset — keying on the pair symbol alone made the two
+                // rows collide and upsert into one.
+                isolatedMarginKey: "\(balance.symbol)#\(balance.asset)",
                 asset: balance.asset,
                 borrowed: balance.borrowed,
                 free: balance.free,
@@ -303,19 +348,10 @@ class HoldingsProcessor: Processor {
     }
 
     private func fetchAllIsolatedMarginBalancesLive() async throws -> [IsolatedMarginBalance] {
-        let persisted = try fetchPersistedMarginBalances()
-        let knownSymbols = Set(persisted.map { $0.symbol })
-
-        var results: [IsolatedMarginBalance] = []
-
-        for symbol in knownSymbols {
-            guard let liveBalances = try await marginBalanceService.fetchIsolatedMarginBalances(symbol) else {
-                continue
-            }
-            results.append(contentsOf: liveBalances)
-        }
-
-        return results
+        // Queries the isolated account without a symbol filter: the user's open pairs
+        // are otherwise undiscoverable, and seeding from persisted rows could never
+        // bootstrap on a fresh install.
+        try await marginBalanceService.fetchAllIsolatedMarginBalances()
     }
 
     // MARK: - Portfolio Data

@@ -41,6 +41,7 @@ nonisolated enum HoldingFactory {
             unrealizedPnL: unrealizedPnL,
             unrealizedPnLPercent: unrealizedPnLPercent,
             realizedPnL: fifo.realizedPnL,
+            tradingMode: tradingMode,
             borrowedQuantity: borrowedQuantity,
             marginAdjustedPnL: marginAdjustedPnL,
             liquidationPrice: liquidationPrice

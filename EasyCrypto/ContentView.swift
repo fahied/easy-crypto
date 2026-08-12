@@ -186,6 +186,7 @@ private struct HoldingsTab: View {
                     priceService: priceService,
                     fifoCalculator: fifoCalculator,
                     modelContainer: modelContainer,
+                    balanceService: .live(apiClient: apiClient),
                     marginTradeImportService: .live(apiClient: apiClient),
                     marginBalanceService: .live(apiClient: apiClient)
                 )

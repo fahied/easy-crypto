@@ -23,6 +23,23 @@ nonisolated struct MarginBalanceService: Sendable {
     /// Returns per-asset balances built from `fetchIsolatedMarginAccount` which includes
     /// borrowed/free/locked/interest per asset plus liquidationPrice/marginLevel at pair level.
     var fetchIsolatedMarginBalances: @Sendable (_ symbol: String) async throws -> [IsolatedMarginBalance]?
+
+    /// Isolated-margin balances for *every* pair the account has open, discovered by
+    /// querying `/sapi/v1/margin/isolated/account` without a `symbols` filter.
+    /// Callers with no prior knowledge of the user's pairs must use this.
+    var fetchAllIsolatedMarginBalances: @Sendable () async throws -> [IsolatedMarginBalance]
+
+    init(
+        fetchCrossMarginAccount: @escaping @Sendable () async throws -> CrossMarginAccountData?,
+        fetchCrossMarginBalances: @escaping @Sendable () async throws -> [CrossMarginBalance],
+        fetchIsolatedMarginBalances: @escaping @Sendable (_ symbol: String) async throws -> [IsolatedMarginBalance]?,
+        fetchAllIsolatedMarginBalances: @escaping @Sendable () async throws -> [IsolatedMarginBalance] = { [] }
+    ) {
+        self.fetchCrossMarginAccount = fetchCrossMarginAccount
+        self.fetchCrossMarginBalances = fetchCrossMarginBalances
+        self.fetchIsolatedMarginBalances = fetchIsolatedMarginBalances
+        self.fetchAllIsolatedMarginBalances = fetchAllIsolatedMarginBalances
+    }
 }
 
 // MARK: - Live Implementation
@@ -99,6 +116,23 @@ extension MarginBalanceService {
 
                 logger.info("Fetched \(balances.count) isolated-margin balances for \(symbol)")
                 return balances
+            },
+            fetchAllIsolatedMarginBalances: {
+                // No `symbols` filter — Binance then returns every isolated pair the
+                // account has created, which is the only way to discover them.
+                let isolatedAccount = try await apiClient.fetchIsolatedMarginAccount([])
+                let balances = isolatedAccount.assets.flatMap { pair in
+                    [pair.baseAsset, pair.quoteAsset].map { detail in
+                        IsolatedMarginBalance.from(
+                            assetDetail: detail,
+                            symbol: pair.symbol,
+                            liquidationPrice: pair.liquidatePrice,
+                            marginLevel: pair.marginLevel
+                        )
+                    }
+                }
+                logger.info("Fetched \(balances.count) isolated-margin balances across \(isolatedAccount.assets.count) pairs")
+                return balances
             }
         )
     }
@@ -149,12 +183,35 @@ extension MarginBalanceService {
                     netAsset: -9500
                 ),
             ]
+        },
+        fetchAllIsolatedMarginBalances: {
+            [
+                IsolatedMarginBalance(
+                    symbol: "BTCUSDT",
+                    asset: "BTC",
+                    borrowed: 0.5,
+                    free: 0.2,
+                    locked: 0.1,
+                    netAsset: -0.201,
+                    liquidationPrice: "42000",
+                    marginLevel: "2.1"
+                ),
+                IsolatedMarginBalance(
+                    symbol: "BTCUSDT",
+                    asset: "USDT",
+                    borrowed: 10000,
+                    free: 500,
+                    locked: 0,
+                    netAsset: -9500
+                ),
+            ]
         }
     )
 
     static let noop = MarginBalanceService(
         fetchCrossMarginAccount: { nil },
         fetchCrossMarginBalances: { [] },
-        fetchIsolatedMarginBalances: { _ in nil }
+        fetchIsolatedMarginBalances: { _ in nil },
+        fetchAllIsolatedMarginBalances: { [] }
     )
 }

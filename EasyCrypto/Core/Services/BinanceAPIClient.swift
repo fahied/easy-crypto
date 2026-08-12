@@ -96,6 +96,12 @@ nonisolated struct BinanceMarginAccount: Sendable, Codable {
 
 /// GET /sapi/v1/margin/isolated/account — per-isolated-symbol account overview.
 /// Source of `liquidatePrice`, the only place Binance reports isolated-margin liquidation risk.
+///
+/// Binance marks every field of this payload optional: the `totalAssetOfBtc` /
+/// `totalLiabilityOfBtc` / `totalNetAssetOfBtc` totals are omitted entirely when the
+/// request carries a `symbols` filter, and pairs with no open position omit their
+/// price/ratio fields. Decoding is therefore lenient — missing values fall back to
+/// zero rather than failing the whole response.
 nonisolated struct BinanceIsolatedMarginAccount: Sendable, Codable {
     struct AssetDetail: Sendable, Codable {
         let asset: String
@@ -104,6 +110,14 @@ nonisolated struct BinanceIsolatedMarginAccount: Sendable, Codable {
         let locked: String
         let interest: String
         let netAsset: String
+
+        static let empty = AssetDetail(
+            asset: "", borrowed: "0", free: "0", locked: "0", interest: "0", netAsset: "0"
+        )
+
+        enum CodingKeys: String, CodingKey {
+            case asset, borrowed, free, locked, interest, netAsset
+        }
     }
 
     struct IsolatedPair: Sendable, Codable, Identifiable {
@@ -119,6 +133,11 @@ nonisolated struct BinanceIsolatedMarginAccount: Sendable, Codable {
         let quoteAsset: AssetDetail
 
         var id: String { symbol }
+
+        enum CodingKeys: String, CodingKey {
+            case symbol, marginLevel, marginRatio, indexPrice, liquidatePrice
+            case liquidateRate, tradeEnabled, enabled, baseAsset, quoteAsset
+        }
     }
 
     let assets: [IsolatedPair]
@@ -126,12 +145,55 @@ nonisolated struct BinanceIsolatedMarginAccount: Sendable, Codable {
     let totalLiabilityOfBtc: String
     let totalNetAssetOfBtc: String
 
+    enum CodingKeys: String, CodingKey {
+        case assets, totalAssetOfBtc, totalLiabilityOfBtc, totalNetAssetOfBtc
+    }
+
     static let empty = BinanceIsolatedMarginAccount(
         assets: [],
         totalAssetOfBtc: "0",
         totalLiabilityOfBtc: "0",
         totalNetAssetOfBtc: "0"
     )
+}
+
+extension BinanceIsolatedMarginAccount.AssetDetail {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        asset = try container.decodeIfPresent(String.self, forKey: .asset) ?? ""
+        borrowed = try container.decodeIfPresent(String.self, forKey: .borrowed) ?? "0"
+        free = try container.decodeIfPresent(String.self, forKey: .free) ?? "0"
+        locked = try container.decodeIfPresent(String.self, forKey: .locked) ?? "0"
+        interest = try container.decodeIfPresent(String.self, forKey: .interest) ?? "0"
+        netAsset = try container.decodeIfPresent(String.self, forKey: .netAsset) ?? "0"
+    }
+}
+
+extension BinanceIsolatedMarginAccount.IsolatedPair {
+    init(from decoder: Decoder) throws {
+        typealias AssetDetail = BinanceIsolatedMarginAccount.AssetDetail
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        symbol = try container.decodeIfPresent(String.self, forKey: .symbol) ?? ""
+        marginLevel = try container.decodeIfPresent(String.self, forKey: .marginLevel) ?? "0"
+        marginRatio = try container.decodeIfPresent(String.self, forKey: .marginRatio) ?? "0"
+        indexPrice = try container.decodeIfPresent(String.self, forKey: .indexPrice) ?? "0"
+        liquidatePrice = try container.decodeIfPresent(String.self, forKey: .liquidatePrice) ?? "0"
+        liquidateRate = try container.decodeIfPresent(String.self, forKey: .liquidateRate) ?? "0"
+        tradeEnabled = try container.decodeIfPresent(Bool.self, forKey: .tradeEnabled) ?? false
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        baseAsset = try container.decodeIfPresent(AssetDetail.self, forKey: .baseAsset) ?? .empty
+        quoteAsset = try container.decodeIfPresent(AssetDetail.self, forKey: .quoteAsset) ?? .empty
+    }
+}
+
+extension BinanceIsolatedMarginAccount {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        assets = try container.decodeIfPresent([IsolatedPair].self, forKey: .assets) ?? []
+        totalAssetOfBtc = try container.decodeIfPresent(String.self, forKey: .totalAssetOfBtc) ?? "0"
+        totalLiabilityOfBtc = try container.decodeIfPresent(String.self, forKey: .totalLiabilityOfBtc) ?? "0"
+        totalNetAssetOfBtc = try container.decodeIfPresent(String.self, forKey: .totalNetAssetOfBtc) ?? "0"
+    }
 }
 
 /// GET /sapi/v1/margin/allAssets — all margin assets summary.
