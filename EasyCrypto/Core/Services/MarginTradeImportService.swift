@@ -75,8 +75,20 @@ extension MarginTradeImportService {
         let previouslySyncedAssets = existingSync.keys
             .filter { $0.hasSuffix("USDT") }
             .map { String($0.dropLast(4)) }
+        let knownAssets = Set(previouslySyncedAssets)
+
+        // Dust-filter: only include balance-only assets whose net asset value
+        // exceeds the threshold. Previously-synced assets are always kept so
+        // trade history stays complete.
+        let netAssetThreshold: Double = 0.000001
+        let filteredBalanceAssets = balanceAssets.filter { asset in
+            let entry = account.userAssets?.first { $0.asset == asset }
+            let netAsset = Double(entry?.netAsset ?? "0") ?? 0
+            return netAsset > netAssetThreshold
+        }
+
         let assets = Array(
-            Set(balanceAssets + previouslySyncedAssets)
+            Set(knownAssets + filteredBalanceAssets)
         )
         .sorted()
 
@@ -158,11 +170,19 @@ extension MarginTradeImportService {
         // can never surface a symbol the account actually holds — that was the
         // bug: newly opened isolated pairs (e.g. DEXEUSDT) were never discovered.
         let isolatedAccount = try await apiClient.fetchIsolatedMarginAccount([])
-        let balanceEntries = isolatedAccount.assets.map { pair in
-            (symbol: pair.symbol, asset: pair.baseAsset.asset)
-        }
         let previouslySyncedSymbols = existingSync.keys
             .filter { $0.hasSuffix("USDT") }
+
+        // Dust-filter isolated pairs: only include pairs whose base asset net
+        // value exceeds the threshold. Previously-synced symbols are always kept.
+        let netAssetThreshold: Double = 0.000001
+        let activePairs = isolatedAccount.assets.filter { pair in
+            let netAsset = Double(pair.baseAsset.netAsset) ?? 0
+            return netAsset > netAssetThreshold
+        }
+        let balanceEntries = activePairs.map { pair in
+            (symbol: pair.symbol, asset: pair.baseAsset.asset)
+        }
         let symbolToAsset = Dictionary(
             balanceEntries.map { ($0.symbol, $0.asset) },
             uniquingKeysWith: { first, _ in first }

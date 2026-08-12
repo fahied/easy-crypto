@@ -64,14 +64,24 @@ extension TradeImportService {
             sync: { existingSync in
                 // 1. Discover assets from account
                 let balances = try await apiClient.fetchAccount()
-                let balanceAssets = balances
-                    .map(\.asset)
-                    .filter { $0 != "USDT" }
                 let previouslySyncedAssets = existingSync.keys
                     .filter { $0.hasSuffix("USDT") }
                     .map { String($0.dropLast(4)) }
+
+                // Assets we've traded before are always included; balance-only assets
+                // must clear a minimum threshold to avoid fetching dust positions.
+                let knownAssets = Set(previouslySyncedAssets)
+                let balanceThreshold: Double = 0.000001
+                let newBalanceAssets = balances
+                    .filter { $0.asset != "USDT" }
+                    .compactMap { balance in
+                        let free = Double(balance.free) ?? 0
+                        let locked = Double(balance.locked) ?? 0
+                        return free + locked > balanceThreshold ? balance.asset : nil
+                    }
+
                 let assets = Array(
-                    Set(balanceAssets + previouslySyncedAssets)
+                    Set(knownAssets + newBalanceAssets)
                 )
                 .sorted()
 
