@@ -6,6 +6,7 @@
 import SwiftUI
 import SwiftData
 import BackgroundTasks
+import os
 
 @main
 struct EasyCryptoApp: App {
@@ -22,11 +23,7 @@ struct EasyCryptoApp: App {
     private let candleAlertService: CandleAlertService
 
     init() {
-        let container = try! ModelContainer(
-            for: Trade.self, SyncMetadata.self, PriceAlertConfig.self, NotificationLogEntry.self,
-            CandleAlertState.self, AccountBalance.self, MarginBalance.self,
-            CrossMarginBalance.self, TradingInsight.self, InsightState.self
-        )
+        let container = Self.makeModelContainer()
         self.modelContainer = container
 
         let keychain = KeychainService.live()
@@ -60,6 +57,30 @@ struct EasyCryptoApp: App {
             summarizer: TradePatternSummarizer(fifo: fifo),
             insightEngine: .live
         )
+    }
+
+    /// Opens the store, discarding it and starting fresh if the on-disk schema no
+    /// longer matches. Acceptable while in beta: everything here is re-synced from
+    /// Binance, so a reset costs one full import rather than any real data.
+    private static func makeModelContainer() -> ModelContainer {
+        let schema = Schema([
+            Trade.self, SyncMetadata.self, PriceAlertConfig.self, NotificationLogEntry.self,
+            CandleAlertState.self, AccountBalance.self, MarginBalance.self,
+            CrossMarginBalance.self, TradingInsight.self, InsightState.self,
+        ])
+
+        do {
+            return try ModelContainer(for: schema)
+        } catch {
+            let logger = Logger(subsystem: "com.fahied.EasyCrypto", category: "store")
+            logger.error("Store incompatible, rebuilding from scratch: \(error)")
+
+            let storeDirectory = URL.applicationSupportDirectory
+            for name in ["default.store", "default.store-shm", "default.store-wal"] {
+                try? FileManager.default.removeItem(at: storeDirectory.appending(path: name))
+            }
+            return try! ModelContainer(for: schema)
+        }
     }
 
     var body: some Scene {

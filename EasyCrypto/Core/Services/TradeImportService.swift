@@ -80,7 +80,9 @@ extension TradeImportService {
                     .map { String($0.dropLast(4)) }
                 let assets = Array(
                     Set(balanceAssets + previouslySyncedAssets + bootstrapTrackedAssets)
-                ).sorted()
+                )
+                .filter { PriceCatalog.symbols.contains($0) }
+                .sorted()
 
                 guard !assets.isEmpty else {
                     logger.info("No non-USDT assets found in account")

@@ -126,9 +126,9 @@ class HoldingsProcessor: Processor {
 
         if syncFromExchange {
             // Sync fresh trades and balances from the exchange before loading.
-            let syncMap = fetchSyncMap()
+            let syncMap = fetchSyncMap(mode: mode)
             let importResult = try await marginTradeImportService.sync(mode, syncMap)
-            persistSyncUpdates(importResult.syncUpdates)
+            persistSyncUpdates(importResult.syncUpdates, mode: mode)
             try persistTrades(importResult.mappedTrades, mode: mode)
         }
 
@@ -288,18 +288,22 @@ class HoldingsProcessor: Processor {
 
     // MARK: - Sync & Persistence Helpers
 
-    private func fetchSyncMap() -> [String: Int64] {
-        let descriptor = FetchDescriptor<SyncMetadata>()
+    private func fetchSyncMap(mode: TradingMode) -> [String: Int64] {
+        let rawMode = mode.rawValue
+        let descriptor = FetchDescriptor<SyncMetadata>(
+            predicate: #Predicate { $0.tradingMode == rawMode }
+        )
         guard let metadata = try? modelContext.fetch(descriptor) else { return [:] }
         return Dictionary(metadata.map { ($0.symbol, $0.lastTradeId) }, uniquingKeysWith: { first, _ in first })
     }
 
-    private func persistSyncUpdates(_ updates: [SyncUpdate]) {
+    private func persistSyncUpdates(_ updates: [SyncUpdate], mode: TradingMode) {
         for update in updates {
             let entity = SyncMetadata(
                 symbol: update.symbol,
                 lastTradeId: update.lastTradeId,
-                lastSyncDate: Date()
+                lastSyncDate: Date(),
+                tradingMode: mode
             )
             modelContext.insert(entity)
         }

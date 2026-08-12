@@ -8,7 +8,9 @@ import SwiftData
 
 @Model
 final class Trade {
-    #Unique<Trade>([\.binanceTradeId, \.symbol])
+    // Binance trade ids restart per market, so the same (id, symbol) pair can name a
+    // different trade in spot, cross-margin and isolated-margin.
+    #Unique<Trade>([\.binanceTradeId, \.symbol, \.tradingMode])
 
     var binanceTradeId: Int64
     var symbol: String

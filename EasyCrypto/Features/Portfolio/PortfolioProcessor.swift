@@ -77,24 +77,25 @@ class PortfolioProcessor: Processor {
 
         do {
             // Sync spot trades (incremental, from last cursor)
-            let spotSyncMap = fetchSyncMap()
+            let spotSyncMap = fetchSyncMap(mode: .spot)
             let spotImport = try await tradeImportService.sync(spotSyncMap)
-            persistSyncUpdates(spotImport.syncUpdates)
+            persistSyncUpdates(spotImport.syncUpdates, mode: .spot)
             try persistTrades(spotImport.mappedTrades, mode: .spot)
 
             // Sync margin trades for cross-margin and isolated-margin in parallel
-            let marginSyncMap = fetchSyncMap()
-            async let crossImport = marginTradeImportService.sync(.crossMargin, marginSyncMap)
-            async let isolatedImport = marginTradeImportService.sync(.isolatedMargin, marginSyncMap)
+            let crossSyncMap = fetchSyncMap(mode: .crossMargin)
+            let isolatedSyncMap = fetchSyncMap(mode: .isolatedMargin)
+            async let crossImport = marginTradeImportService.sync(.crossMargin, crossSyncMap)
+            async let isolatedImport = marginTradeImportService.sync(.isolatedMargin, isolatedSyncMap)
 
             let crossResult = try await crossImport
             let isolatedResult = try await isolatedImport
 
-            persistSyncUpdates(crossResult.syncUpdates)
+            persistSyncUpdates(crossResult.syncUpdates, mode: .crossMargin)
             try persistTrades(crossResult.mappedTrades, mode: .crossMargin)
             try await persistCrossMarginBalances()
 
-            persistSyncUpdates(isolatedResult.syncUpdates)
+            persistSyncUpdates(isolatedResult.syncUpdates, mode: .isolatedMargin)
             try persistTrades(isolatedResult.mappedTrades, mode: .isolatedMargin)
 
             state.summary = try await computeSummary()
@@ -299,8 +300,11 @@ class PortfolioProcessor: Processor {
 
     // MARK: - Data Access Helpers
 
-    private func fetchSyncMap() -> [String: Int64] {
-        let descriptor = FetchDescriptor<SyncMetadata>()
+    private func fetchSyncMap(mode: TradingMode) -> [String: Int64] {
+        let rawMode = mode.rawValue
+        let descriptor = FetchDescriptor<SyncMetadata>(
+            predicate: #Predicate { $0.tradingMode == rawMode }
+        )
         guard let metadata = try? modelContext.fetch(descriptor) else { return [:] }
         return Dictionary(metadata.map { ($0.symbol, $0.lastTradeId) }, uniquingKeysWith: { first, _ in first })
     }
@@ -326,12 +330,13 @@ class PortfolioProcessor: Processor {
 
     // MARK: - Persistence Helpers
 
-    private func persistSyncUpdates(_ updates: [SyncUpdate]) {
+    private func persistSyncUpdates(_ updates: [SyncUpdate], mode: TradingMode) {
         for update in updates {
             let entity = SyncMetadata(
                 symbol: update.symbol,
                 lastTradeId: update.lastTradeId,
-                lastSyncDate: Date()
+                lastSyncDate: Date(),
+                tradingMode: mode
             )
             modelContext.insert(entity)
         }

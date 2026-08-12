@@ -65,13 +65,12 @@ extension MarginTradeImportService {
 
     // MARK: - Cross-Margin Sync
 
-    /// Cross-margin uses a single "cross" sync cursor across all symbols.
+    /// Cross-margin keeps one sync cursor per symbol, since Binance trade ids are
+    /// per-symbol — a shared cursor would skip whole ranges on every other symbol.
     private static func syncCrossMargin(
         apiClient: BinanceAPIClient,
         existingSync: [String: Int64]
     ) async throws -> TradeImportResult {
-        let crossFromId = existingSync["cross"]
-
         let account = try await apiClient.fetchMarginAccount()
         let balanceAssets = (account.userAssets ?? [])
             .compactMap(\.asset)
@@ -97,7 +96,7 @@ extension MarginTradeImportService {
 
         for (index, asset) in assets.enumerated() {
             let symbol = "\(asset)USDT"
-            let startFromId = crossFromId.map { $0 + 1 }
+            let startFromId = existingSync[symbol].map { $0 + 1 }
 
             do {
                 let assetTrades = try await fetchMarginTradesWithRetry(
@@ -126,7 +125,7 @@ extension MarginTradeImportService {
 
                 if let lastTrade = assetTrades.last {
                     allSyncUpdates.append(SyncUpdate(
-                        symbol: "cross",
+                        symbol: symbol,
                         lastTradeId: lastTrade.id,
                         syncDate: Date()
                     ))
@@ -172,9 +171,16 @@ extension MarginTradeImportService {
             balanceEntries.map { ($0.symbol, $0.asset) },
             uniquingKeysWith: { first, _ in first }
         )
+        // Symbols known only from a previous sync cursor have no baseAsset in the
+        // isolated account response, so fall back to stripping the quote asset.
+        func baseAsset(of symbol: String) -> String {
+            symbolToAsset[symbol] ?? String(symbol.dropLast(4))
+        }
         let symbols = Array(
             Set(balanceEntries.map(\.symbol) + previouslySyncedSymbols)
-        ).sorted()
+        )
+        .filter { PriceCatalog.symbols.contains(baseAsset(of: $0)) }
+        .sorted()
 
         guard !symbols.isEmpty else {
             logger.info("No isolated-margin symbols found for sync")
@@ -187,10 +193,7 @@ extension MarginTradeImportService {
         var allSyncUpdates: [SyncUpdate] = []
 
         for (index, symbol) in symbols.enumerated() {
-            // Fall back to stripping "USDT" for symbols only known from a
-            // previous sync cursor (no live position, so no baseAsset from
-            // the isolated account response).
-            let asset = symbolToAsset[symbol] ?? String(symbol.dropLast(4))
+            let asset = baseAsset(of: symbol)
             let lastTradeId = existingSync[symbol]
             let startFromId = lastTradeId.map { $0 + 1 }
 
