@@ -111,19 +111,18 @@ struct HoldingsListView: View {
     // MARK: - Trading Mode Picker
 
     private var tradingModePicker: some View {
-        Picker("Trading Mode", selection: Binding(
-            get: { state.selectedTradingMode },
-            set: { [weak processor] newMode in
-                guard let processor else { return }
-                processor.state.selectedTradingMode = newMode
-                Task { await processor.handle(.filterByMode(newMode)) }
-            }
-        )) {
+        // Bind straight to the observable state and react in onChange. A hand-rolled
+        // Binding whose setter mutated state re-entered the view update that produced it.
+        @Bindable var bindable = processor
+        return Picker("Trading Mode", selection: $bindable.state.selectedTradingMode) {
             ForEach(TradingMode.allCases, id: \.self) { mode in
                 Text(mode.displayName).tag(mode)
             }
         }
         .pickerStyle(.segmented)
+        .onChange(of: state.selectedTradingMode) { _, newMode in
+            processor.send(.filterByMode(newMode))
+        }
     }
 
     // MARK: - Holdings List
