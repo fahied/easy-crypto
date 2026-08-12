@@ -97,6 +97,7 @@ class PortfolioProcessor: Processor {
 
             persistSyncUpdates(isolatedResult.syncUpdates, mode: .isolatedMargin)
             try persistTrades(isolatedResult.mappedTrades, mode: .isolatedMargin)
+            try await persistIsolatedMarginBalances()
 
             state.summary = try await computeSummary()
             state.lastRefreshDate = Date()
@@ -114,18 +115,25 @@ class PortfolioProcessor: Processor {
     ) async throws -> PortfolioSummary {
         let spotHoldings = try await computeSpotHoldings(persistedBalances: persistedSpotBalances)
         let crossHoldings = try await computeCrossMarginHoldings()
-        let isolatedHoldings = try computeIsolatedMarginHoldings()
+        let isolatedHoldings = try await computeIsolatedMarginHoldings()
 
-        let spotSummary = PortfolioSummary(from: spotHoldings)
-        let crossSummary = PortfolioSummary(from: crossHoldings)
-        let isolatedSummary = PortfolioSummary(from: isolatedHoldings)
+        // Realized P&L is derived from the full trade history, not from the surviving
+        // holdings: a position that was bought and sold in full has no holding left but
+        // its profit still counts.
+        let spotRealized = realizedPnL(mode: .spot)
+        let crossRealized = realizedPnL(mode: .crossMargin)
+        let isolatedRealized = realizedPnL(mode: .isolatedMargin)
+
+        let spotSummary = PortfolioSummary(from: spotHoldings, totalRealizedPnL: spotRealized)
+        let crossSummary = PortfolioSummary(from: crossHoldings, totalRealizedPnL: crossRealized)
+        let isolatedSummary = PortfolioSummary(from: isolatedHoldings, totalRealizedPnL: isolatedRealized)
 
         let allHoldings = spotHoldings + crossHoldings + isolatedHoldings
 
         let totalInvested = allHoldings.reduce(0.0) { $0 + $1.totalInvestedUSDT }
         let totalCurrent = allHoldings.reduce(0.0) { $0 + $1.currentValueUSDT }
         let totalUnrealized = allHoldings.reduce(0.0) { $0 + $1.unrealizedPnL }
-        let totalRealized = allHoldings.reduce(0.0) { $0 + $1.realizedPnL }
+        let totalRealized = spotRealized + crossRealized + isolatedRealized
         let totalInvestedCalc = totalInvested > 0 ? (totalUnrealized / totalInvested) * 100.0 : 0.0
         let count = allHoldings.count
 
@@ -168,8 +176,7 @@ class PortfolioProcessor: Processor {
     private func computeSpotHoldings(
         persistedBalances: [String: Double]? = nil
     ) async throws -> [Holding] {
-        let allTrades = try fetchTrades(mode: .spot)
-        guard !allTrades.isEmpty else { return [] }
+        let allTrades = (try? fetchTrades(mode: .spot)) ?? []
 
         let balances: [String: Double]
         if let persisted = persistedBalances {
@@ -177,14 +184,13 @@ class PortfolioProcessor: Processor {
         } else {
             balances = try await balanceService.fetchBalances()
         }
+        guard !allTrades.isEmpty || !balances.isEmpty else { return [] }
+
         let tradesByAsset = Dictionary(grouping: allTrades.map(Self.toFIFOTrade)) { $0.asset }
 
         var fifoByAsset: [String: FIFOResult] = [:]
-        var totalRealizedPnL: Double = 0
         for (asset, assetTrades) in tradesByAsset {
-            let result = fifoCalculator.calculate(assetTrades)
-            fifoByAsset[asset] = result
-            totalRealizedPnL += result.realizedPnL
+            fifoByAsset[asset] = fifoCalculator.calculate(assetTrades)
         }
 
         // Include all assets that ever appeared in spot trades, not just active ones
@@ -214,30 +220,32 @@ class PortfolioProcessor: Processor {
 
     // MARK: - Cross-Margin Holdings
 
+    /// Holdings are keyed by the union of traded assets and account balances — a margin
+    /// account's quote-asset float (USDT) has no trades of its own but is real value.
     private func computeCrossMarginHoldings() async throws -> [Holding] {
-        let allTrades = try fetchTrades(mode: .crossMargin)
-        guard !allTrades.isEmpty else { return [] }
+        let allTrades = (try? fetchTrades(mode: .crossMargin)) ?? []
 
         let descriptor = FetchDescriptor<CrossMarginBalance>()
         let crossBalances: [CrossMarginBalance] = (try? modelContext.fetch(descriptor)) ?? []
-        guard !crossBalances.isEmpty else { return [] }
+        guard !allTrades.isEmpty || !crossBalances.isEmpty else { return [] }
 
         let tradesByAsset = Dictionary(grouping: allTrades.map(Self.toFIFOTrade)) { $0.asset }
-
-        let interestByAsset = Dictionary(
-            crossBalances.map { ($0.asset, $0.interest) },
+        let balanceByAsset = Dictionary(
+            crossBalances.map { ($0.asset, $0) },
             uniquingKeysWith: { first, _ in first }
         )
 
-        var holdings: [Holding] = []
-        for (asset, assetTrades) in tradesByAsset {
-            let fifoResult = fifoCalculator.calculate(assetTrades)
-            let interest = interestByAsset[asset] ?? 0
-            let marginResult = fifoCalculator.calculateMargin(assetTrades, [asset: interest])
+        let assets = Set(tradesByAsset.keys).union(balanceByAsset.keys)
+        let prices = try await fetchPrices(for: Array(assets))
 
-            let balance = crossBalances.first { $0.asset == asset }
+        var holdings: [Holding] = []
+        for asset in assets {
+            let assetTrades = tradesByAsset[asset] ?? []
+            let balance = balanceByAsset[asset]
+            let fifoResult = assetTrades.isEmpty ? .empty : fifoCalculator.calculate(assetTrades)
+            let marginResult = fifoCalculator.calculateMargin(assetTrades, [asset: balance?.interest ?? 0])
+
             let quantity = balance?.netAsset ?? marginResult.totalRemainingQuantity
-            let borrowedQuantity = balance?.borrowed
             let marginAdjustedPnL: Double? = marginResult.marginAdjustedRealizedPnL > 0 || marginResult.totalBorrowingFees > 0
                 ? marginResult.marginAdjustedRealizedPnL
                 : nil
@@ -246,9 +254,10 @@ class PortfolioProcessor: Processor {
                 holdings.append(HoldingFactory.make(
                     asset: asset,
                     quantity: quantity,
-                    currentPrice: 0,
+                    currentPrice: price(of: asset, in: prices),
                     fifo: fifoResult,
-                    borrowedQuantity: borrowedQuantity,
+                    tradingMode: .crossMargin,
+                    borrowedQuantity: balance?.borrowed,
                     marginAdjustedPnL: marginAdjustedPnL,
                     liquidationPrice: nil
                 ))
@@ -260,25 +269,30 @@ class PortfolioProcessor: Processor {
 
     // MARK: - Isolated-Margin Holdings
 
-    private func computeIsolatedMarginHoldings() -> [Holding] {
-        let allTrades = try? fetchTrades(mode: .isolatedMargin)
-        guard let trades = allTrades, !trades.isEmpty else { return [] }
+    private func computeIsolatedMarginHoldings() async throws -> [Holding] {
+        let trades = (try? fetchTrades(mode: .isolatedMargin)) ?? []
 
         let descriptor = FetchDescriptor<MarginBalance>()
         let marginBalances: [MarginBalance] = (try? modelContext.fetch(descriptor)) ?? []
+        guard !trades.isEmpty || !marginBalances.isEmpty else { return [] }
 
         let tradesByAsset = Dictionary(grouping: trades.map(Self.toFIFOTrade)) { $0.asset }
-        let interestByAsset = Dictionary(marginBalances.map { ($0.asset, $0.interest) }, uniquingKeysWith: { first, _ in first })
+        // An asset appears once per pair it trades in, so sum rather than pick one row.
+        let netAssetByAsset = Dictionary(marginBalances.map { ($0.asset, $0.netAsset) }, uniquingKeysWith: +)
+        let interestByAsset = Dictionary(marginBalances.map { ($0.asset, $0.interest) }, uniquingKeysWith: +)
+        let borrowedByAsset = Dictionary(marginBalances.map { ($0.asset, $0.borrowed) }, uniquingKeysWith: +)
+
+        let assets = Set(tradesByAsset.keys).union(netAssetByAsset.keys)
+        let prices = try await fetchPrices(for: Array(assets))
 
         var holdings: [Holding] = []
-        for (asset, assetTrades) in tradesByAsset {
-            let fifoResult = fifoCalculator.calculate(assetTrades)
+        for asset in assets {
+            let assetTrades = tradesByAsset[asset] ?? []
+            let fifoResult = assetTrades.isEmpty ? .empty : fifoCalculator.calculate(assetTrades)
             let borrowingFees = interestByAsset[asset].map { [asset: $0] } ?? [:]
             let marginResult = fifoCalculator.calculateMargin(assetTrades, borrowingFees)
 
-            let marginBalance = marginBalances.first { $0.asset == asset }
-            let quantity = marginBalance?.netAsset ?? marginResult.totalRemainingQuantity
-            let borrowedQuantity = marginBalance.map { $0.borrowed }
+            let quantity = netAssetByAsset[asset] ?? marginResult.totalRemainingQuantity
             let marginAdjustedPnL: Double? = marginResult.marginAdjustedRealizedPnL > 0 || marginResult.totalBorrowingFees > 0
                 ? marginResult.marginAdjustedRealizedPnL
                 : nil
@@ -287,15 +301,33 @@ class PortfolioProcessor: Processor {
                 holdings.append(HoldingFactory.make(
                     asset: asset,
                     quantity: quantity,
-                    currentPrice: 0,
+                    currentPrice: price(of: asset, in: prices),
                     fifo: fifoResult,
-                    borrowedQuantity: borrowedQuantity,
+                    tradingMode: .isolatedMargin,
+                    borrowedQuantity: borrowedByAsset[asset],
                     marginAdjustedPnL: marginAdjustedPnL
                 ))
             }
         }
 
         return sortHoldings(holdings)
+    }
+
+    // MARK: - Pricing
+
+    private func fetchPrices(for assets: [String]) async throws -> [String: Double] {
+        try await priceService.fetchPrices(PriceCatalog.usdtSymbols(from: assets))
+    }
+
+    private func price(of asset: String, in prices: [String: Double]) -> Double {
+        asset == "USDT" ? 1.0 : (prices["\(asset)USDT"] ?? 0)
+    }
+
+    /// Realized P&L across an entire market's trade history.
+    private func realizedPnL(mode: TradingMode) -> Double {
+        guard let trades = try? fetchTrades(mode: mode) else { return 0 }
+        let byAsset = Dictionary(grouping: trades.map(Self.toFIFOTrade)) { $0.asset }
+        return byAsset.values.reduce(0.0) { $0 + fifoCalculator.calculate($1).realizedPnL }
     }
 
     // MARK: - Data Access Helpers
@@ -372,6 +404,28 @@ class PortfolioProcessor: Processor {
 
         for balance in balances {
             modelContext.insert(balance)
+        }
+        try modelContext.save()
+    }
+
+    /// Mirrors `persistCrossMarginBalances` for isolated pairs, so the portfolio no
+    /// longer depends on the Holdings tab having been opened to have balances at all.
+    private func persistIsolatedMarginBalances() async throws {
+        let balances = try await marginBalanceService.fetchAllIsolatedMarginBalances()
+        guard !balances.isEmpty else { return }
+
+        try modelContext.delete(model: MarginBalance.self)
+
+        for balance in balances {
+            modelContext.insert(MarginBalance(
+                symbol: balance.symbol,
+                isolatedMarginKey: "\(balance.symbol)#\(balance.asset)",
+                asset: balance.asset,
+                borrowed: balance.borrowed,
+                free: balance.free,
+                locked: balance.locked,
+                interest: balance.interest
+            ))
         }
         try modelContext.save()
     }
