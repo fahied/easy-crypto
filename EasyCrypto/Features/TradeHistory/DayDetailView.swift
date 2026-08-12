@@ -92,14 +92,17 @@ private struct TransactionBreakdownCard: View {
                     Capsule().fill(sideColor.opacity(0.18))
                 )
 
-            Text(detail.asset)
-                .font(.headline)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(detail.asset)
+                    .font(.headline)
+                Text(detail.timestamp.formatted(date: .omitted, time: .shortened))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
 
             Spacer()
 
-            Text(detail.timestamp.formatted(date: .omitted, time: .shortened))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            TradingModeBadge(mode: detail.tradingMode)
         }
     }
 

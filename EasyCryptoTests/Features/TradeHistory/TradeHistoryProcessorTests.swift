@@ -15,32 +15,32 @@ private func makeContainer() throws -> ModelContainer {
     return try ModelContainer(for: Trade.self, SyncMetadata.self, configurations: config)
 }
 
-private func seedTrades(in container: ModelContainer, mode: TradingMode = .spot) throws {
+private func seedTrades(in container: ModelContainer, mode: TradingMode = .spot, idOffset: Int64 = 0) throws {
     let context = ModelContext(container)
     // BTC trades
     context.insert(Trade(
-        binanceTradeId: 1, symbol: "BTCUSDT", asset: "BTC",
+        binanceTradeId: 1 + idOffset, symbol: "BTCUSDT", asset: "BTC",
         price: 50000, quantity: 0.5, quoteQuantity: 25000,
         commission: 0, commissionAsset: "USDT",
         timestamp: Date(timeIntervalSince1970: 1_700_000_000),
-        isBuyer: true, orderId: 100,
+        isBuyer: true, orderId: 100 + idOffset,
         tradingMode: mode
     ))
     context.insert(Trade(
-        binanceTradeId: 2, symbol: "BTCUSDT", asset: "BTC",
+        binanceTradeId: 2 + idOffset, symbol: "BTCUSDT", asset: "BTC",
         price: 60000, quantity: 0.2, quoteQuantity: 12000,
         commission: 0, commissionAsset: "USDT",
         timestamp: Date(timeIntervalSince1970: 1_700_200_000),
-        isBuyer: false, orderId: 101,
+        isBuyer: false, orderId: 101 + idOffset,
         tradingMode: mode
     ))
     // ETH trade
     context.insert(Trade(
-        binanceTradeId: 3, symbol: "ETHUSDT", asset: "ETH",
+        binanceTradeId: 3 + idOffset, symbol: "ETHUSDT", asset: "ETH",
         price: 3000, quantity: 5.0, quoteQuantity: 15000,
         commission: 0, commissionAsset: "USDT",
         timestamp: Date(timeIntervalSince1970: 1_700_100_000),
-        isBuyer: true, orderId: 102,
+        isBuyer: true, orderId: 102 + idOffset,
         tradingMode: mode
     ))
     try context.save()
@@ -60,13 +60,6 @@ struct TradeHistoryInitTests {
         #expect(processor.state.selectedCoin == nil)
         #expect(processor.state.isLoading == false)
         #expect(processor.state.error == nil)
-    }
-
-    @Test("Then selectedTradingMode defaults to spot")
-    func defaultTradingMode() throws {
-        let container = try makeContainer()
-        let processor = TradeHistoryProcessor(modelContainer: container)
-        #expect(processor.state.selectedTradingMode == .spot)
     }
 }
 
@@ -160,70 +153,93 @@ struct TradeHistoryFilterTests {
     }
 }
 
-// MARK: - Filter by Mode
+// MARK: - Aggregation Across Trading Modes
 
-@Suite("Given a TradeHistoryProcessor filtering by trading mode")
-struct TradeHistoryModeFilterTests {
+@Suite("Given a TradeHistoryProcessor aggregating every trading mode")
+struct TradeHistoryAggregationTests {
 
-    @Test("When in spot mode, then only spot trades are loaded")
-    func spotModeFiltersTrades() async throws {
+    @Test("When spot and margin trades exist, then all of them are loaded")
+    func loadsEveryMode() async throws {
         let container = try makeContainer()
         try seedTrades(in: container, mode: .spot)
-        try seedTrades(in: container, mode: .crossMargin)
+        try seedTrades(in: container, mode: .crossMargin, idOffset: 10)
+        try seedTrades(in: container, mode: .isolatedMargin, idOffset: 20)
         let processor = TradeHistoryProcessor(modelContainer: container)
 
         await processor.handle(.loadHistory)
 
-        #expect(processor.state.selectedTradingMode == .spot)
-        #expect(processor.state.trades.count == 6)
+        #expect(processor.state.trades.count == 9)
+        let modes = Set(processor.state.details.map(\.tradingMode))
+        #expect(modes == [.spot, .crossMargin, .isolatedMargin])
     }
 
-    @Test("When filtering by crossMargin, then only crossMargin trades are loaded")
-    func crossMarginModeFiltersTrades() async throws {
+    @Test("When modes share a day, then daily P&L sums their realized P&L")
+    func dailyPnLSumsAcrossModes() async throws {
         let container = try makeContainer()
         try seedTrades(in: container, mode: .spot)
-        try seedTrades(in: container, mode: .crossMargin)
+        try seedTrades(in: container, mode: .crossMargin, idOffset: 10)
         let processor = TradeHistoryProcessor(modelContainer: container)
 
         await processor.handle(.loadHistory)
-        await processor.handle(.filterByMode(.crossMargin))
 
-        #expect(processor.state.selectedTradingMode == .crossMargin)
-        #expect(processor.state.trades.allSatisfy { $0.tradingModeEnum == .crossMargin })
-        #expect(processor.state.trades.count == 3)
+        let sellDay = Calendar.current.startOfDay(for: Date(timeIntervalSince1970: 1_700_200_000))
+        let entry = try #require(processor.state.dailyPnL[sellDay])
+        // Each mode contributes one sell of 0.2 BTC bought at 50k, sold at 60k → 2000 each.
+        #expect(entry.sellCount == 2)
+        #expect(abs(entry.realizedPnL - 4000) < 0.01)
     }
 
-    @Test("When filtering by isolatedMargin, then only isolatedMargin trades are loaded")
-    func isolatedMarginModeFiltersTrades() async throws {
+    @Test("When modes share an asset, then FIFO lots do not cross modes")
+    func fifoIsolatedPerMode() async throws {
         let container = try makeContainer()
-        try seedTrades(in: container, mode: .spot)
-        try seedTrades(in: container, mode: .isolatedMargin)
+        let context = ModelContext(container)
+        // Spot buy at 50k, margin buy at 20k — the margin sell must consume the margin lot.
+        context.insert(Trade(
+            binanceTradeId: 1, symbol: "BTCUSDT", asset: "BTC",
+            price: 50000, quantity: 1.0, quoteQuantity: 50000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+            isBuyer: true, orderId: 100, tradingMode: .spot
+        ))
+        context.insert(Trade(
+            binanceTradeId: 2, symbol: "BTCUSDT", asset: "BTC",
+            price: 20000, quantity: 1.0, quoteQuantity: 20000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_100_000),
+            isBuyer: true, orderId: 101, tradingMode: .crossMargin
+        ))
+        context.insert(Trade(
+            binanceTradeId: 3, symbol: "BTCUSDT", asset: "BTC",
+            price: 30000, quantity: 1.0, quoteQuantity: 30000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_200_000),
+            isBuyer: false, orderId: 102, tradingMode: .crossMargin
+        ))
+        try context.save()
+
         let processor = TradeHistoryProcessor(modelContainer: container)
-
         await processor.handle(.loadHistory)
-        await processor.handle(.filterByMode(.isolatedMargin))
 
-        #expect(processor.state.selectedTradingMode == .isolatedMargin)
-        #expect(processor.state.trades.allSatisfy { $0.tradingModeEnum == .isolatedMargin })
-        #expect(processor.state.trades.count == 3)
+        let sell = try #require(processor.state.details.first { !$0.isBuyer })
+        #expect(sell.tradingMode == .crossMargin)
+        #expect(abs((sell.realizedPnL ?? 0) - 10000) < 0.01)
     }
 
-    @Test("When switching to margin mode, then coin filter is cleared")
-    func modeSwitchClearsCoinFilter() async throws {
+    @Test("When filtering by coin, then every mode for that coin is kept")
+    func coinFilterSpansModes() async throws {
         let container = try makeContainer()
         try seedTrades(in: container, mode: .spot)
-        try seedTrades(in: container, mode: .crossMargin)
+        try seedTrades(in: container, mode: .crossMargin, idOffset: 10)
         let processor = TradeHistoryProcessor(modelContainer: container)
 
         await processor.handle(.loadHistory)
         await processor.handle(.filterByCoin("BTC"))
-        await processor.handle(.filterByMode(.crossMargin))
 
-        #expect(processor.state.selectedCoin == nil)
-        #expect(processor.state.availableCoins == ["BTC", "ETH"])
+        #expect(processor.state.trades.count == 4)
+        #expect(Set(processor.state.details.map(\.tradingMode)) == [.spot, .crossMargin])
     }
 
-    @Test("When margin mode has sells with commission, then details show borrowingFee")
+    @Test("When margin sells carry commission, then details show borrowingFee")
     func marginDetailsIncludeBorrowingFee() async throws {
         let container = try makeContainer()
         let context = ModelContext(container)
@@ -256,7 +272,7 @@ struct TradeHistoryModeFilterTests {
         #expect(detail.marginAdjustedPnL != nil)
     }
 
-    @Test("When in spot mode, then details have nil borrowingFee and marginAdjustedPnL")
+    @Test("When trades are spot, then details have nil borrowingFee and marginAdjustedPnL")
     func spotDetailsHaveNoMarginFields() async throws {
         let container = try makeContainer()
         try seedTrades(in: container, mode: .spot)

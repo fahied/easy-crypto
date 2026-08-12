@@ -12,10 +12,6 @@ struct TradeHistoryState: ViewState {
     var isLoading: Bool = false
     var error: String?
 
-    // MARK: - Trading Mode
-
-    var selectedTradingMode: TradingMode = .spot
-
     // MARK: - Calendar
 
     /// First day of the month currently shown in the calendar.

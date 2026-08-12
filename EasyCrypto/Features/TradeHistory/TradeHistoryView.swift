@@ -38,7 +38,6 @@ struct TradeHistoryView: View {
     private var calendarContent: some View {
         ScrollView {
             VStack(spacing: Theme.sectionSpacing) {
-                tradingModePicker
                 filterChips
                 monthSummary
                 CalendarMonthView(
@@ -52,24 +51,6 @@ struct TradeHistoryView: View {
             .padding(.bottom, 20)
         }
         .scrollIndicators(.hidden)
-    }
-
-    // MARK: - Trading Mode Picker
-
-    private var tradingModePicker: some View {
-        Picker("Trading Mode", selection: Binding(
-            get: { state.selectedTradingMode },
-            set: { [weak processor] newMode in
-                guard let processor else { return }
-                processor.state.selectedTradingMode = newMode
-                Task { await processor.handle(.filterByMode(newMode)) }
-            }
-        )) {
-            ForEach(TradingMode.allCases, id: \.self) { mode in
-                Text(mode.displayName).tag(mode)
-            }
-        }
-        .pickerStyle(.segmented)
     }
 
     // MARK: - Filter Chips
