@@ -18,7 +18,7 @@ struct PortfolioView: View {
                     loadingView
                 } else if let error = state.error {
                     errorView(error)
-                } else if processor.summary(for: state.selectedTab).isEmpty {
+                } else if processor.aggregateSummary.isEmpty {
                     emptyView
                 } else {
                     portfolioContent
@@ -56,7 +56,6 @@ struct PortfolioView: View {
     private var portfolioContent: some View {
         ScrollView {
             VStack(spacing: Theme.sectionSpacing) {
-                modeSegmentedPicker
                 summaryGrid
                 lastRefreshFooter
             }
@@ -66,27 +65,10 @@ struct PortfolioView: View {
         .scrollIndicators(.hidden)
     }
 
-    // MARK: - Mode Segmented Picker
-
-    private var modeSegmentedPicker: some View {
-        Picker("Portfolio Mode", selection: Binding(
-            get: { state.selectedTab },
-            set: { [weak processor] newTab in
-                guard let processor else { return }
-                processor.state.selectedTab = newTab
-            }
-        )) {
-            ForEach(PortfolioTab.allCases, id: \.self) { tab in
-                Text(tab.rawValue).tag(tab)
-            }
-        }
-        .pickerStyle(.segmented)
-    }
-
     // MARK: - Summary Grid
 
     private var summaryGrid: some View {
-        let summary = processor.summary(for: state.selectedTab)
+        let summary = processor.aggregateSummary
         let pnlColor = summary.totalUnrealizedPnL >= 0 ? Theme.profit : Theme.loss
         let realizedColor = summary.totalRealizedPnL >= 0 ? Theme.profit : Theme.loss
         let totalPnLColor = summary.totalPnL >= 0 ? Theme.profit : Theme.loss
@@ -192,7 +174,7 @@ struct PortfolioView: View {
 
 // MARK: - Previews
 
-#Preview("Overview") {
+#Preview("Portfolio") {
     let container = try! ModelContainer(
         for: Trade.self, SyncMetadata.self, AccountBalance.self,
              MarginBalance.self, CrossMarginBalance.self,
@@ -208,69 +190,6 @@ struct PortfolioView: View {
         summary: PreviewSampleData.samplePortfolioSummary,
         lastRefreshDate: Date()
     )
-    return PortfolioView(processor: processor)
-        .preferredColorScheme(.dark)
-}
-
-#Preview("Spot") {
-    let container = try! ModelContainer(
-        for: Trade.self, SyncMetadata.self, AccountBalance.self,
-             MarginBalance.self, CrossMarginBalance.self,
-        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-    )
-    let processor = PortfolioProcessor(
-        tradeImportService: .noop,
-        priceService: .noop,
-        fifoCalculator: .live,
-        modelContainer: container
-    )
-    processor.state = PortfolioState(
-        summary: PreviewSampleData.samplePortfolioSummary,
-        lastRefreshDate: Date()
-    )
-    processor.state.selectedTab = .spot
-    return PortfolioView(processor: processor)
-        .preferredColorScheme(.dark)
-}
-
-#Preview("Cross Margin") {
-    let container = try! ModelContainer(
-        for: Trade.self, SyncMetadata.self, AccountBalance.self,
-             MarginBalance.self, CrossMarginBalance.self,
-        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-    )
-    let processor = PortfolioProcessor(
-        tradeImportService: .noop,
-        priceService: .noop,
-        fifoCalculator: .live,
-        modelContainer: container
-    )
-    processor.state = PortfolioState(
-        summary: PreviewSampleData.samplePortfolioSummary,
-        lastRefreshDate: Date()
-    )
-    processor.state.selectedTab = .crossMargin
-    return PortfolioView(processor: processor)
-        .preferredColorScheme(.dark)
-}
-
-#Preview("Isolated Margin") {
-    let container = try! ModelContainer(
-        for: Trade.self, SyncMetadata.self, AccountBalance.self,
-             MarginBalance.self, CrossMarginBalance.self,
-        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-    )
-    let processor = PortfolioProcessor(
-        tradeImportService: .noop,
-        priceService: .noop,
-        fifoCalculator: .live,
-        modelContainer: container
-    )
-    processor.state = PortfolioState(
-        summary: PreviewSampleData.samplePortfolioSummary,
-        lastRefreshDate: Date()
-    )
-    processor.state.selectedTab = .isolatedMargin
     return PortfolioView(processor: processor)
         .preferredColorScheme(.dark)
 }

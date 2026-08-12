@@ -38,8 +38,6 @@ class HoldingsProcessor: Processor {
             await loadHoldings(syncFromExchange: true)
         case .loadPersisted:
             await loadHoldings(syncFromExchange: false)
-        case .setTradingMode(let mode):
-            state.selectedTradingMode = mode
         }
     }
 
@@ -48,25 +46,24 @@ class HoldingsProcessor: Processor {
         state.error = nil
 
         do {
-            let portfolioData: PortfolioData
-
-            switch state.selectedTradingMode {
-            case .spot:
-                portfolioData = try await loadSpotHoldings(
-                    usePersistedBalances: !syncFromExchange
-                )
-            case .crossMargin, .isolatedMargin:
-                portfolioData = try await loadMarginHoldings(
-                    syncFromExchange: syncFromExchange
-                )
-            }
-
+            let portfolioData = try await loadAggregatedHoldings(syncFromExchange: syncFromExchange)
             state.holdings = portfolioData.holdings.sorted { $0.currentValueUSDT > $1.currentValueUSDT }
         } catch {
             state.error = error.localizedDescription
         }
 
         state.isLoading = false
+    }
+
+    // MARK: - Aggregated Holdings (Spot + Cross Margin + Isolated Margin)
+
+    private func loadAggregatedHoldings(syncFromExchange: Bool) async throws -> PortfolioData {
+        let spotHoldings = try await loadSpotHoldings(usePersistedBalances: !syncFromExchange)
+        let crossHoldings = try await loadMarginHoldings(mode: .crossMargin, syncFromExchange: syncFromExchange)
+        let isolatedHoldings = try await loadMarginHoldings(mode: .isolatedMargin, syncFromExchange: syncFromExchange)
+
+        let allHoldings = spotHoldings.holdings + crossHoldings.holdings + isolatedHoldings.holdings
+        return PortfolioData(holdings: allHoldings)
     }
 
     // MARK: - Spot Holdings
@@ -89,7 +86,8 @@ class HoldingsProcessor: Processor {
                 quantities: quantities,
                 prices: prices,
                 fifoByAsset: fifoByAsset,
-                marginAdjustedPnLByAsset: [:]
+                marginAdjustedPnLByAsset: [:],
+                mode: .spot
             )
         )
     }
@@ -105,8 +103,7 @@ class HoldingsProcessor: Processor {
 
     // MARK: - Margin Holdings
 
-    private func loadMarginHoldings(syncFromExchange: Bool) async throws -> PortfolioData {
-        let mode = state.selectedTradingMode
+    private func loadMarginHoldings(mode: TradingMode, syncFromExchange: Bool) async throws -> PortfolioData {
 
         if syncFromExchange {
             // Sync fresh trades and balances from the exchange before loading.
@@ -133,7 +130,7 @@ class HoldingsProcessor: Processor {
             fifoByAsset[asset] = result
         }
 
-        let (quantities, perAssetInterest) = try await loadMarginQuantities()
+        let (quantities, perAssetInterest) = try await loadMarginQuantities(mode: mode)
 
         for (asset, assetTrades) in tradesByAsset {
             let assetFifoTrades = assetTrades.map(Self.toFIFOTrade)
@@ -149,7 +146,8 @@ class HoldingsProcessor: Processor {
                 quantities: quantities,
                 prices: prices,
                 fifoByAsset: fifoByAsset,
-                marginAdjustedPnLByAsset: marginAdjustedPnLByAsset
+                marginAdjustedPnLByAsset: marginAdjustedPnLByAsset,
+                mode: mode
             )
         )
     }
@@ -165,8 +163,7 @@ class HoldingsProcessor: Processor {
         return quantities
     }
 
-    private func loadMarginQuantities() async throws -> ([String: Double], [String: Double]) {
-        let mode = state.selectedTradingMode
+    private func loadMarginQuantities(mode: TradingMode) async throws -> ([String: Double], [String: Double]) {
 
         if mode == .isolatedMargin {
             // Load from persisted MarginBalance model for isolated margin
@@ -203,7 +200,8 @@ class HoldingsProcessor: Processor {
         quantities: [String: Double],
         prices: [String: Double],
         fifoByAsset: [String: FIFOResult],
-        marginAdjustedPnLByAsset: [String: Double]
+        marginAdjustedPnLByAsset: [String: Double],
+        mode: TradingMode = .spot
     ) -> [Holding] {
         var holdings: [Holding] = []
         for (asset, quantity) in quantities where quantity > 0.001 {
@@ -215,6 +213,7 @@ class HoldingsProcessor: Processor {
                 quantity: quantity,
                 currentPrice: currentPrice,
                 fifo: fifo,
+                tradingMode: mode,
                 marginAdjustedPnL: marginPnL
             ))
         }

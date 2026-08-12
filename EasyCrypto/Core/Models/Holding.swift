@@ -17,6 +17,7 @@ nonisolated struct Holding: Equatable, Sendable, Identifiable, Hashable {
     let unrealizedPnL: Double
     let unrealizedPnLPercent: Double
     let realizedPnL: Double
+    let tradingMode: TradingMode
 
     // MARK: - Margin Fields
 
@@ -37,6 +38,7 @@ nonisolated struct Holding: Equatable, Sendable, Identifiable, Hashable {
         unrealizedPnL: Double,
         unrealizedPnLPercent: Double,
         realizedPnL: Double,
+        tradingMode: TradingMode = .spot,
         borrowedQuantity: Double? = nil,
         marginAdjustedPnL: Double? = nil,
         liquidationPrice: Double? = nil
@@ -50,6 +52,7 @@ nonisolated struct Holding: Equatable, Sendable, Identifiable, Hashable {
         self.unrealizedPnL = unrealizedPnL
         self.unrealizedPnLPercent = unrealizedPnLPercent
         self.realizedPnL = realizedPnL
+        self.tradingMode = tradingMode
         self.borrowedQuantity = borrowedQuantity
         self.marginAdjustedPnL = marginAdjustedPnL
         self.liquidationPrice = liquidationPrice

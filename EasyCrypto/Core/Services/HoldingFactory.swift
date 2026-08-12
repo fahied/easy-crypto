@@ -19,6 +19,7 @@ nonisolated enum HoldingFactory {
         quantity: Double,
         currentPrice: Double,
         fifo: FIFOResult,
+        tradingMode: TradingMode = .spot,
         borrowedQuantity: Double? = nil,
         marginAdjustedPnL: Double? = nil,
         liquidationPrice: Double? = nil

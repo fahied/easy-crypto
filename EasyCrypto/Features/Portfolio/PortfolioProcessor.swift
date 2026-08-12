@@ -47,8 +47,6 @@ class PortfolioProcessor: Processor {
             await loadPersistedData()
         case .sortHoldings(let by):
             state.sortBy = by
-        case .selectTab:
-            break
         }
     }
 
@@ -322,11 +320,6 @@ class PortfolioProcessor: Processor {
         )
     }
 
-    private func fetchAllTrades() throws -> [Trade] {
-        let descriptor = FetchDescriptor<Trade>(sortBy: [SortDescriptor(\.binanceTradeId)])
-        return try modelContext.fetch(descriptor)
-    }
-
     private func sortHoldings(_ holdings: [Holding]) -> [Holding] {
         holdings.sorted { $0.totalInvestedUSDT > $1.totalInvestedUSDT }
     }
@@ -378,20 +371,10 @@ class PortfolioProcessor: Processor {
         try modelContext.save()
     }
 
-    // MARK: - Summary for Tab
+    // MARK: - Summary for Display
 
-    func summary(for tab: PortfolioTab) -> PortfolioSummary {
-        switch tab {
-        case .overview:
-            return state.summary
-        case .spot:
-            return PortfolioSummary(from: state.summary.spot)
-        case .crossMargin:
-            return PortfolioSummary(from: state.summary.crossMargin)
-        case .isolatedMargin:
-            return PortfolioSummary(from: state.summary.isolatedMargin)
-        }
-    }
+    /// Always returns the full aggregated summary across all trading modes.
+    var aggregateSummary: PortfolioSummary { state.summary }
 
     // MARK: - Trade Mapping
 

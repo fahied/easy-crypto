@@ -2,7 +2,7 @@
 //  HoldingsListView.swift
 //  EasyCrypto
 //
-//  Unified holdings view supporting spot, cross-margin, and isolated-margin modes.
+//  Displays aggregated holdings across spot, cross-margin, and isolated-margin.
 //
 
 import SwiftUI
@@ -16,7 +16,6 @@ struct HoldingsListView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: Theme.sectionSpacing) {
-                tradingModeBar
                 holdingsList
             }
             .padding(.horizontal)
@@ -28,24 +27,6 @@ struct HoldingsListView: View {
                 processor.send(.loadPersisted)
             }
         }
-    }
-
-    // MARK: - Trading Mode Bar
-
-    private var tradingModeBar: some View {
-        Picker("Trading Mode", selection: Binding(
-            get: { state.selectedTradingMode },
-            set: { [weak processor] newMode in
-                guard let processor else { return }
-                processor.state.selectedTradingMode = newMode
-                Task { await processor.handle(.loadHoldings) }
-            }
-        )) {
-            ForEach(TradingMode.allCases, id: \.self) { mode in
-                Text(mode.displayName).tag(mode)
-            }
-        }
-        .pickerStyle(.segmented)
     }
 
     // MARK: - Holdings List
@@ -63,7 +44,7 @@ struct HoldingsListView: View {
                     ForEach(state.holdings) { holding in
                         MarginHoldingRow(
                             holding: holding,
-                            tradingMode: state.selectedTradingMode,
+                            tradingMode: holding.tradingMode,
                             borrowedQuantity: holding.borrowedQuantity,
                             liquidationPrice: holding.liquidationPrice.map { String(format: "%.0f", $0) }
                         )
@@ -123,30 +104,10 @@ struct HoldingsListView: View {
 
 // MARK: - Previews
 
-#Preview("Spot mode") {
+#Preview("Holdings") {
     let container = try! ModelContainer(
         for: Trade.self, SyncMetadata.self, AccountBalance.self,
-        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-    )
-    let processor = HoldingsProcessor(
-        priceService: PriceService(
-            fetchPrices: { @Sendable symbols in
-                Dictionary(uniqueKeysWithValues: symbols.map { ($0, 50000.0) })
-            }
-        ),
-        fifoCalculator: .live,
-        modelContainer: container
-    )
-    return NavigationStack {
-        HoldingsListView(processor: processor)
-    }
-    .preferredColorScheme(.dark)
-}
-
-#Preview("Cross margin mode") {
-    let container = try! ModelContainer(
-        for: Trade.self, SyncMetadata.self, AccountBalance.self, MarginBalance.self,
-             CrossMarginBalance.self,
+             MarginBalance.self, CrossMarginBalance.self,
         configurations: ModelConfiguration(isStoredInMemoryOnly: true)
     )
     let processor = HoldingsProcessor(
@@ -158,35 +119,18 @@ struct HoldingsListView: View {
         fifoCalculator: .live,
         modelContainer: container,
         marginTradeImportService: .noop,
-        marginBalanceService: MarginBalanceService(
-            fetchCrossMarginAccount: {
-                CrossMarginAccountData(
-                    marginLevel: 3.2,
-                    totalAsset: 50000,
-                    totalLiability: 15000,
-                    totalNetAsset: 35000,
-                    totalAssetOfBtc: 0.5,
-                    totalLiabilityOfBtc: 0.15,
-                    totalNetAssetOfBtc: 0.4,
-                    maxBorrowable: 100000,
-                    maintained: 20000,
-                    perAssetInterest: ["BTC": 0.001, "ETH": 0.002]
-                )
-            },
-            fetchCrossMarginBalances: { [] },
-            fetchIsolatedMarginBalances: { _ in nil }
-        )
+        marginBalanceService: .noop
     )
-    processor.state.selectedTradingMode = .crossMargin
     return NavigationStack {
         HoldingsListView(processor: processor)
     }
     .preferredColorScheme(.dark)
 }
 
-#Preview("Isolated margin mode") {
+#Preview("Holdings empty") {
     let container = try! ModelContainer(
-        for: Trade.self, SyncMetadata.self, MarginBalance.self,
+        for: Trade.self, SyncMetadata.self, AccountBalance.self,
+             MarginBalance.self, CrossMarginBalance.self,
         configurations: ModelConfiguration(isStoredInMemoryOnly: true)
     )
     let processor = HoldingsProcessor(
@@ -198,13 +142,32 @@ struct HoldingsListView: View {
         fifoCalculator: .live,
         modelContainer: container,
         marginTradeImportService: .noop,
-        marginBalanceService: MarginBalanceService(
-            fetchCrossMarginAccount: { nil },
-            fetchCrossMarginBalances: { [] },
-            fetchIsolatedMarginBalances: { _ in nil }
-        )
+        marginBalanceService: .noop
     )
-    processor.state.selectedTradingMode = .isolatedMargin
+    return NavigationStack {
+        HoldingsListView(processor: processor)
+    }
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Holdings loading") {
+    let container = try! ModelContainer(
+        for: Trade.self, SyncMetadata.self, AccountBalance.self,
+             MarginBalance.self, CrossMarginBalance.self,
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+    )
+    let processor = HoldingsProcessor(
+        priceService: PriceService(
+            fetchPrices: { @Sendable symbols in
+                Dictionary(uniqueKeysWithValues: symbols.map { ($0, 50000.0) })
+            }
+        ),
+        fifoCalculator: .live,
+        modelContainer: container,
+        marginTradeImportService: .noop,
+        marginBalanceService: .noop
+    )
+    processor.state.isLoading = true
     return NavigationStack {
         HoldingsListView(processor: processor)
     }
