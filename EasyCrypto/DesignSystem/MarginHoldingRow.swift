@@ -2,9 +2,9 @@
 //  MarginHoldingRow.swift
 //  EasyCrypto
 //
-//  Holding row with margin-specific columns: trading mode badge, borrowed quantity,
-//  and liquidation price. Used in the Portfolio Holdings tab when trading mode is
-//  cross-margin or isolated-margin. Falls back to standard holding display for spot.
+//  Holding row with margin-specific columns: borrowed quantity and liquidation price.
+//  Used in the Holdings tab, where the mode picker already identifies the trading mode.
+//  Falls back to standard holding display for spot.
 //
 //  Margin-specific fields (borrowed quantity, liquidation price) are passed as
 //  optional parameters — ADV-PORTFOLIO-002 wires them from IsolatedMarginBalance.
@@ -17,76 +17,112 @@ struct MarginHoldingRow: View {
     let borrowedQuantity: Double?
     let liquidationPrice: String?
 
+    private var hasCostBasis: Bool { holding.weightedAvgBuyPrice > 0 }
+    private var isFlat: Bool { abs(holding.unrealizedPnL) < 0.005 }
+    private var isUp: Bool { holding.unrealizedPnL >= 0 }
+    private var pnlColor: Color { isFlat ? Theme.neutral : (isUp ? Theme.profit : Theme.loss) }
+
+    private var marketColor: Color {
+        guard hasCostBasis, holding.currentPrice > 0 else { return .primary }
+        if holding.currentPrice > holding.weightedAvgBuyPrice { return Theme.profit }
+        if holding.currentPrice < holding.weightedAvgBuyPrice { return Theme.loss }
+        return .primary
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Main row: asset info + value + P&L
-            HStack(spacing: 12) {
-                // Asset icon placeholder
-                Circle()
-                    .fill(Theme.accent.opacity(0.15))
-                    .frame(width: 40, height: 40)
-                    .overlay {
-                        Text(String(holding.asset.prefix(1)))
-                            .font(.headline.bold())
-                            .foregroundStyle(Theme.accent)
-                    }
+        VStack(spacing: 8) {
+            header
+            Divider().overlay(Color.white.opacity(0.08))
+            statsStrip
+        }
+        .glassCard(cornerRadius: Theme.smallRadius + 4, padding: 12)
+    }
 
-                // Asset info
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 8) {
-                        Text(holding.asset)
-                            .font(.headline)
-                        TradingModeBadge(mode: tradingMode)
-                    }
-                    Text("\(holding.totalQuantity.quantityFormatted)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+    // MARK: - Header
 
-                Spacer()
-
-                // Value & P&L
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(holding.currentValueUSDT.usdtFormatted)
-                        .font(.headline)
-                    MarginPnLLabel(
-                        value: holding.unrealizedPnL,
-                        percentage: holding.unrealizedPnLPercent,
-                        borrowingFee: nil, // caller can pass when available
-                        font: .caption.bold()
-                    )
-                }
+    private var header: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(holding.asset)
+                    .font(.subheadline.weight(.semibold))
+                Text(holding.totalQuantity.quantityFormatted)
+                    .font(.caption2)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
             }
 
-            // Margin-specific detail row (hidden for spot)
-            if tradingMode != .spot {
-                HStack(spacing: 16) {
-                    if let borrowed = borrowedQuantity, borrowed > 1e-12 {
-                        HStack(spacing: 4) {
-                            Text("Borrowed:")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text("\(borrowed.quantityFormatted)")
-                                .font(.caption.bold())
-                                .foregroundStyle(Theme.loss)
-                        }
-                    }
+            Spacer(minLength: 8)
 
-                    if let liqPrice = liquidationPrice, !liqPrice.isEmpty {
-                        HStack(spacing: 4) {
-                            Text("Liq:")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text("$\(liqPrice)")
-                                .font(.caption.bold())
-                                .foregroundStyle(Theme.loss)
-                        }
-                    }
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(holding.currentValueUSDT.usdtFormatted)
+                    .font(.headline.weight(.semibold))
+                    .monospacedDigit()
+
+                pnlPill
+            }
+        }
+    }
+
+    private var pnlPill: some View {
+        HStack(spacing: 3) {
+            if !isFlat {
+                Image(systemName: isUp ? "arrow.up.right" : "arrow.down.right")
+                    .font(.system(size: 9, weight: .bold))
+            }
+            Text(holding.unrealizedPnL.signedUsdtFormatted)
+                .monospacedDigit()
+            Text(holding.unrealizedPnLPercent.percentFormatted)
+                .monospacedDigit()
+                .foregroundStyle(pnlColor.opacity(0.75))
+        }
+        .font(.caption2.weight(.semibold))
+        .foregroundStyle(pnlColor)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background {
+            Capsule().fill(pnlColor.opacity(0.14))
+        }
+    }
+
+    // MARK: - Stats
+
+    private var statsStrip: some View {
+        HStack(alignment: .top, spacing: 8) {
+            stat(
+                label: "Avg Buy",
+                value: hasCostBasis ? holding.weightedAvgBuyPrice.priceFormatted : "\u{2014}"
+            )
+            stat(
+                label: "Market",
+                value: holding.currentPrice > 0 ? holding.currentPrice.priceFormatted : "\u{2014}",
+                tint: marketColor
+            )
+
+            if tradingMode != .spot {
+                if let borrowed = borrowedQuantity, borrowed > 1e-12 {
+                    stat(label: "Borrowed", value: borrowed.quantityFormatted, tint: Theme.loss)
+                }
+                if let liqPrice = liquidationPrice, !liqPrice.isEmpty {
+                    stat(label: "Liq. Price", value: "$\(liqPrice)", tint: Theme.loss)
                 }
             }
         }
-        .padding(.vertical, 4)
-        .glassCard()
+    }
+
+    private func stat(label: String, value: String, tint: Color = .primary) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label.uppercased())
+                .font(.system(size: 9, weight: .semibold))
+                .tracking(0.5)
+                .foregroundStyle(.tertiary)
+            Text(value)
+                .font(.caption.weight(.medium))
+                .monospacedDigit()
+                .foregroundStyle(tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

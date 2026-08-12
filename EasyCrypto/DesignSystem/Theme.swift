@@ -49,4 +49,11 @@ extension Double {
             return formatted(.number.precision(.fractionLength(8)))
         }
     }
+
+    /// Precision scales with magnitude so sub-cent assets don't collapse to "$0.00".
+    var priceFormatted: String {
+        let magnitude = abs(self)
+        let digits = magnitude >= 1 ? 2 : (magnitude >= 0.01 ? 4 : 8)
+        return formatted(.currency(code: "USD").precision(.fractionLength(digits)))
+    }
 }

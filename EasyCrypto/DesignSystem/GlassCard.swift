@@ -7,10 +7,11 @@ import SwiftUI
 
 struct GlassCardModifier: ViewModifier {
     var cornerRadius: CGFloat = Theme.cardRadius
+    var padding: CGFloat = Theme.cardSpacing + 4
 
     func body(content: Content) -> some View {
         content
-            .padding(Theme.cardSpacing + 4)
+            .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -25,8 +26,11 @@ struct GlassCardModifier: ViewModifier {
 }
 
 extension View {
-    func glassCard(cornerRadius: CGFloat = Theme.cardRadius) -> some View {
-        modifier(GlassCardModifier(cornerRadius: cornerRadius))
+    func glassCard(
+        cornerRadius: CGFloat = Theme.cardRadius,
+        padding: CGFloat = Theme.cardSpacing + 4
+    ) -> some View {
+        modifier(GlassCardModifier(cornerRadius: cornerRadius, padding: padding))
     }
 }
 
