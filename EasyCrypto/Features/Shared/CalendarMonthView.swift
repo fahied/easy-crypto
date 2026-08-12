@@ -43,10 +43,17 @@ struct CalendarMonthView: View {
 
     @ViewBuilder
     private func dayCell(for date: Date) -> some View {
+        let day = calendar.startOfDay(for: date)
         let dayNumber = calendar.component(.day, from: date)
-        if let entry = dailyPnL[calendar.startOfDay(for: date)], entry.sellCount > 0 {
-            NavigationLink(value: calendar.startOfDay(for: date)) {
-                DayCellContent(dayNumber: dayNumber, pnl: entry.realizedPnL)
+        // Gated on tradeCount, not sellCount: a day of buys has no realized P&L but
+        // still has trades to show.
+        if let entry = dailyPnL[day], entry.tradeCount > 0 {
+            NavigationLink(value: day) {
+                DayCellContent(
+                    dayNumber: dayNumber,
+                    pnl: entry.sellCount > 0 ? entry.realizedPnL : nil,
+                    tradeCount: entry.tradeCount
+                )
             }
             .buttonStyle(.plain)
         } else {
@@ -88,9 +95,12 @@ struct CalendarMonthView: View {
 struct DayCellContent: View {
     let dayNumber: Int
     let pnl: Double?
+    var tradeCount: Int = 0
+
+    private var hasActivity: Bool { tradeCount > 0 }
 
     private var color: Color {
-        guard let pnl else { return .clear }
+        guard let pnl else { return hasActivity ? Theme.accent : .clear }
         if pnl > 0 { return Theme.profit }
         if pnl < 0 { return Theme.loss }
         return Theme.neutral
@@ -100,7 +110,7 @@ struct DayCellContent: View {
         VStack(spacing: 2) {
             Text("\(dayNumber)")
                 .font(.caption.weight(.medium))
-                .foregroundStyle(pnl == nil ? Color.secondary : .primary)
+                .foregroundStyle(pnl == nil && !hasActivity ? Color.secondary : .primary)
 
             if let pnl {
                 Text(compactAmount(pnl))
@@ -108,12 +118,16 @@ struct DayCellContent: View {
                     .foregroundStyle(color)
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
+            } else if hasActivity {
+                Circle()
+                    .fill(color)
+                    .frame(width: 4, height: 4)
             }
         }
         .frame(maxWidth: .infinity)
         .frame(height: 54)
         .background {
-            if pnl != nil {
+            if pnl != nil || hasActivity {
                 RoundedRectangle(cornerRadius: Theme.smallRadius, style: .continuous)
                     .fill(color.opacity(0.18))
                     .overlay(

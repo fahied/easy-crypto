@@ -132,8 +132,9 @@ struct TradeHistoryView: View {
         HStack(spacing: 16) {
             legendItem(color: Theme.profit, label: "Profit")
             legendItem(color: Theme.loss, label: "Loss")
+            legendItem(color: Theme.accent, label: "Buys only")
             Spacer()
-            Text("Tap a day for details")
+            Text("Tap a day")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
