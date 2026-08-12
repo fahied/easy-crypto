@@ -198,8 +198,7 @@ class PortfolioProcessor: Processor {
         let balanceAssets = Set(balances.keys)
         let allAssets = tradeAssets.union(balanceAssets)
 
-        let priceAssets = allAssets.filter { $0 != "USDT" && PriceCatalog.symbols.contains($0) }
-        let priceSymbols = priceAssets.map { "\($0)USDT" }
+        let priceSymbols = PriceCatalog.usdtSymbols(from: Array(allAssets))
         let prices = try await priceService.fetchPrices(priceSymbols)
 
         return allAssets.sorted().compactMap { asset in

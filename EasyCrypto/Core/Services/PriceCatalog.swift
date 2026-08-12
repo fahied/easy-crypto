@@ -2,25 +2,18 @@
 //  PriceCatalog.swift
 //  EasyCrypto
 //
-//  Hard-coded set of USDT pairs the app cares about. All price lookups
-//  are filtered to this list so we never hit the exchange with symbols
-//  that aren't in the user's trading universe.
+//  Converts asset tickers to USDT trading-pair symbols for price lookups.
+//  The set of known assets is built dynamically from the user's account
+//  balances and trade-sync history — there is no hardcoded whitelist.
 
 import Foundation
 
 struct PriceCatalog {
-    static let symbols: Set<String> = [
-        "ADA", "ALLO", "BANK", "BCH", "BNB", "BTC",
-        "DEXE", "ETH", "HYPER", "IOTA", "LTC", "MET",
-        "MMT", "NEAR", "SENT", "SOL", "TRX", "XRP",
-    ]
-
     /// Builds a ["BTCUSDT", "ETHUSDT", …] list from an asset set,
-    /// excluding the given asset (e.g. "USDT") and filtering to
-    /// the curated catalog.
+    /// excluding the given asset (e.g. "USDT") which always has price 1.0.
     static func usdtSymbols(from assets: [String], exclude: String = "USDT") -> [String] {
         assets
-            .filter { $0 != exclude && symbols.contains($0) }
+            .filter { $0 != exclude }
             .map { "\($0)USDT" }
     }
 }

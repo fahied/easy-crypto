@@ -54,14 +54,6 @@ extension TradeImportService {
         category: "sync"
     )
 
-    nonisolated private static let bootstrapTrackedAssets = [
-        "BTC",
-        "SOL",
-        "IOTX",
-        "BNB",
-    ]
-
-    /// Delay between per-asset fetch requests to stay within Binance's weight limits.
     nonisolated private static let interRequestDelay: Duration = .milliseconds(300)
 
     /// Maximum retries per symbol when a 429 rate-limit response is received.
@@ -79,9 +71,8 @@ extension TradeImportService {
                     .filter { $0.hasSuffix("USDT") }
                     .map { String($0.dropLast(4)) }
                 let assets = Array(
-                    Set(balanceAssets + previouslySyncedAssets + bootstrapTrackedAssets)
+                    Set(balanceAssets + previouslySyncedAssets)
                 )
-                .filter { PriceCatalog.symbols.contains($0) }
                 .sorted()
 
                 guard !assets.isEmpty else {
