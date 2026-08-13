@@ -17,7 +17,8 @@ struct PortfolioSummaryTests {
             totalUnrealizedPnL: 20000.0,
             totalUnrealizedPnLPercent: 20.0,
             totalRealizedPnL: 5000.0,
-            holdingsCount: 5
+            holdingsCount: 5,
+            spot: .empty, crossMargin: .empty, isolatedMargin: .empty
         )
 
         #expect(summary.totalInvestedUSDT == 100000.0)
@@ -38,7 +39,8 @@ struct PortfolioSummaryTests {
             totalUnrealizedPnL: -20000.0,
             totalUnrealizedPnLPercent: -20.0,
             totalRealizedPnL: -3000.0,
-            holdingsCount: 3
+            holdingsCount: 3,
+            spot: .empty, crossMargin: .empty, isolatedMargin: .empty
         )
 
         #expect(summary.totalUnrealizedPnL < 0)

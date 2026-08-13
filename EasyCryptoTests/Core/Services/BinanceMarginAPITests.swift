@@ -108,7 +108,7 @@ struct LiveMarginAPITests {
         #expect(account.totalNetAsset == "45500")
         #expect(account.maxBorrowable == "13000")
         #expect(account.maintained == "1000")
-        #expect(account.userAssets.count == 2)
+        #expect(account.userAssets?.count == 2)
     }
 
     @Test("When fetchMarginAccount returns assets, then userAssets are populated")
@@ -116,13 +116,13 @@ struct LiveMarginAPITests {
         let client = makeLiveClient()
         let account = try await client.fetchMarginAccount()
 
-        let btc = try #require(account.userAssets.first { $0.asset == "BTC" })
+        let btc = try #require(account.userAssets?.first { $0.asset == "BTC" })
         #expect(btc.borrowed == "0")
         #expect(btc.free == "0.5")
         #expect(btc.locked == "0")
         #expect(btc.interest == "0")
 
-        let usdt = try #require(account.userAssets.first { $0.asset == "USDT" })
+        let usdt = try #require(account.userAssets?.first { $0.asset == "USDT" })
         #expect(usdt.borrowed == "5000")
         #expect(usdt.free == "10000")
         #expect(usdt.locked == "0")
@@ -346,8 +346,8 @@ struct PreviewMarginAPITests {
     func previewFetchMarginAccount() async throws {
         let account = try await BinanceAPIClient.preview.fetchMarginAccount()
         #expect(account.marginLevel == "1.5")
-        #expect(account.userAssets.count == 1)
-        #expect(account.userAssets.first?.asset == "BTC")
+        #expect(account.userAssets?.count == 1)
+        #expect(account.userAssets?.first?.asset == "BTC")
     }
 
     @Test("Then fetchIsolatedMarginAccount returns sample data with a liquidation price")
@@ -396,7 +396,7 @@ struct NoopMarginAPITests {
     func noopFetchMarginAccount() async throws {
         let account = try await BinanceAPIClient.noop.fetchMarginAccount()
         #expect(account.marginLevel == "0")
-        #expect(account.userAssets.isEmpty)
+        #expect(account.userAssets?.isEmpty == true)
     }
 
     @Test("Then fetchIsolatedMarginAccount returns empty")
