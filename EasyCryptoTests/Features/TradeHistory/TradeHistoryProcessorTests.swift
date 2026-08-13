@@ -288,3 +288,63 @@ struct TradeHistoryAggregationTests {
         #expect(detail.marginAdjustedPnL == nil)
     }
 }
+
+// MARK: - Multi-fill Order Grouping
+
+@Suite("Given a TradeHistoryProcessor with fills that span multiple days")
+struct TradeHistoryMultiFillTests {
+
+    /// A large sell order that Binance executed as two fills on different days.
+    /// The aggregate should NOT collapse both fills into the later day.
+    @Test("When a single order fills across two days, then both days show the sell")
+    func multiFillOrderSpansDays() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+
+        // One buy so the FIFO lots exist.
+        context.insert(Trade(
+            binanceTradeId: 1, symbol: "BTCUSDT", asset: "BTC",
+            price: 50000, quantity: 1.0, quoteQuantity: 50000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_699_000_000),
+            isBuyer: true, orderId: 500, tradingMode: .spot
+        ))
+
+        // A sell order (orderId 501) that fills in two pieces on different days.
+        // Fill 1 — Jan 2: sells 0.3 BTC at 60000
+        context.insert(Trade(
+            binanceTradeId: 2, symbol: "BTCUSDT", asset: "BTC",
+            price: 60000, quantity: 0.3, quoteQuantity: 18000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+            isBuyer: false, orderId: 501, tradingMode: .spot
+        ))
+        // Fill 2 — Jan 3: sells 0.3 BTC at 60000 (same order)
+        context.insert(Trade(
+            binanceTradeId: 3, symbol: "BTCUSDT", asset: "BTC",
+            price: 60000, quantity: 0.3, quoteQuantity: 18000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_864_000),
+            isBuyer: false, orderId: 501, tradingMode: .spot
+        ))
+        try context.save()
+
+        let processor = TradeHistoryProcessor(modelContainer: container)
+        await processor.handle(.loadHistory)
+
+        let sellDetails = processor.state.details.filter { !$0.isBuyer }
+        #expect(sellDetails.count == 2, "Expected 2 sell entries (one per day), got \(sellDetails.count)")
+
+        let day1 = Calendar.current.startOfDay(for: Date(timeIntervalSince1970: 1_700_000_000))
+        let day2 = Calendar.current.startOfDay(for: Date(timeIntervalSince1970: 1_700_864_000))
+
+        let pnl1 = processor.state.dailyPnL[day1]?.realizedPnL ?? 0
+        let pnl2 = processor.state.dailyPnL[day2]?.realizedPnL ?? 0
+        let totalPnL = pnl1 + pnl2
+
+        // Each sell: (60000 - 50000) * 0.3 = 3000. Total = 6000.
+        #expect(abs(pnl1 - 3000) < 0.01, "Jan 2 P&L should be 3000, got \(pnl1)")
+        #expect(abs(pnl2 - 3000) < 0.01, "Jan 3 P&L should be 3000, got \(pnl2)")
+        #expect(abs(totalPnL - 6000) < 0.01, "Total P&L should be 6000, got \(totalPnL)")
+    }
+}

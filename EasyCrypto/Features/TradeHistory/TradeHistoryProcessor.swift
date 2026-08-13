@@ -134,6 +134,8 @@ class TradeHistoryProcessor: Processor {
 
             // Group fills by order. Buy/sell sides are inherently distinct orders, but we
             // include the side in the key defensively in case an id is ever reused.
+            // Multi-day orders must stay split across days so the history tab shows P&L
+            // on each fill day rather than collapsing to the latest fill.
             let byOrder = Dictionary(grouping: fills) { fill in
                 OrderKey(
                     symbol: fill.0.symbol,
@@ -144,15 +146,22 @@ class TradeHistoryProcessor: Processor {
             }
 
             for order in byOrder.values {
-                details.append(aggregate(fills: order))
+                // Single-day orders: aggregate all fills together as before.
+                // Multi-day orders: produce one entry per day so history isn't lost.
+                let calendar = Calendar.current
+                let byDay = Dictionary(grouping: order) { fill in
+                    calendar.startOfDay(for: fill.0.timestamp)
+                }
+                for dayFills in byDay.values {
+                    details.append(aggregate(fills: dayFills))
+                }
             }
         }
 
         return details.sorted { $0.timestamp > $1.timestamp }
     }
 
-    /// Collapses the fills of a single order into one `DayTradeDetail` with summed
-    /// quantities/totals and a quantity-weighted average execution price.
+    /// Collapses the fills of a single order on a single day into one `DayTradeDetail`.
     private func aggregate(fills: [(Trade, SaleBreakdown?)]) -> DayTradeDetail {
         let ordered = fills.sorted { $0.0.timestamp < $1.0.timestamp }
         let first = ordered[0].0
@@ -160,10 +169,12 @@ class TradeHistoryProcessor: Processor {
         let totalQuote = ordered.reduce(0) { $0 + $1.0.quoteQuantity }
         let avgPrice = totalQuantity > 0 ? totalQuote / totalQuantity : first.price
         let timestamp = ordered.map(\.0.timestamp).max() ?? first.timestamp
+        let day = Calendar.current.startOfDay(for: timestamp)
+        let dayStr = ISO8601DateFormatter().string(from: day)
 
         if first.isBuyer {
             return DayTradeDetail(
-                id: "\(first.symbol)-\(first.tradingMode)-order-\(first.orderId)-buy",
+                id: "\(first.symbol)-\(first.tradingMode)-order-\(first.orderId)-buy-\(dayStr)",
                 asset: first.asset,
                 symbol: first.symbol,
                 timestamp: timestamp,
@@ -186,7 +197,7 @@ class TradeHistoryProcessor: Processor {
         let marginAdjustedPnL = borrowingFee != 0 ? realizedPnL - borrowingFee : nil
         let costBasisPrice = totalQuantity > 0 ? costBasisAmount / totalQuantity : nil
         return DayTradeDetail(
-            id: "\(first.symbol)-\(first.tradingMode)-order-\(first.orderId)-sell",
+            id: "\(first.symbol)-\(first.tradingMode)-order-\(first.orderId)-sell-\(dayStr)",
             asset: first.asset,
             symbol: first.symbol,
             timestamp: timestamp,
@@ -198,7 +209,7 @@ class TradeHistoryProcessor: Processor {
             costBasisPrice: costBasisPrice,
             invested: costBasisAmount,
             realizedPnL: realizedPnL,
-            borrowingFee: borrowingFee != 0 ? borrowingFee : nil,
+            borrowingFee: borrowingFee,
             marginAdjustedPnL: marginAdjustedPnL
         )
     }
