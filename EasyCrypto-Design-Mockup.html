@@ -1,0 +1,1501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>EasyCrypto — Visual Design Mockup</title>
+<style>
+  /* ── Reset & base ── */
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --accent: #F0B90B;
+    --accent-dim: rgba(240,185,11,0.15);
+    --profit: #21D471;
+    --profit-dim: rgba(33,212,113,0.12);
+    --loss: #FF4757;
+    --loss-dim: rgba(255,71,87,0.12);
+    --margin-cross: #FB7D21;
+    --margin-isolated: #9966FA;
+    --glass-fill: rgba(255,255,255,0.06);
+    --glass-stroke: rgba(255,255,255,0.10);
+    --glass-fill-hover: rgba(255,255,255,0.10);
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --text-primary: #f0f0f5;
+    --text-secondary: #9e9eb8;
+    --text-tertiary: #5e5e78;
+    --card-radius: 20px;
+    --small-radius: 12px;
+    --card-spacing: 12px;
+    --section-spacing: 20px;
+    --font-stack: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'SF Mono', 'SF Mono Text', 'Menlo', 'Courier New', monospace;
+  }
+
+  body {
+    font-family: var(--font-stack);
+    background: #060609;
+    color: var(--text-primary);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Phone frame ── */
+  .phone-frame {
+    width: 393px;
+    height: 852px;
+    background: #000;
+    border-radius: 48px;
+    padding: 10px;
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.08),
+      0 40px 80px rgba(0,0,0,0.6),
+      0 0 120px rgba(240,185,11,0.04);
+    position: relative;
+  }
+  .phone-screen {
+    width: 100%;
+    height: 100%;
+    background: var(--bg);
+    border-radius: 38px;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Dynamic Island ── */
+  .dynamic-island {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 120px;
+    height: 34px;
+    background: #000;
+    border-radius: 20px;
+    z-index: 100;
+  }
+
+  /* ── Status Bar ── */
+  .status-bar {
+    height: 54px;
+    padding: 14px 28px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    z-index: 50;
+    flex-shrink: 0;
+  }
+  .status-bar .time { letter-spacing: -0.2px; }
+  .status-icons { display: flex; gap: 6px; align-items: center; font-size: 12px; }
+
+  /* ── Navigation ── */
+  .nav-bar {
+    padding: 8px 20px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .nav-title {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.4px;
+  }
+  .nav-action {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--glass-fill);
+    border: 1px solid var(--glass-stroke);
+    color: var(--accent);
+    cursor: pointer;
+    transition: background 0.15s;
+    font-size: 15px;
+  }
+  .nav-action:hover { background: var(--glass-fill-hover); }
+  .nav-action:disabled { opacity: 0.4; cursor: default; }
+
+  /* ── Screen container ── */
+  .screen-container {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+  .screen {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0 18px 90px;
+    scrollbar-width: none;
+    opacity: 0;
+    transform: translateY(8px);
+    pointer-events: none;
+    transition: opacity 0.28s ease, transform 0.28s ease;
+  }
+  .screen::-webkit-scrollbar { display: none; }
+  .screen.active {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+
+  /* ── Tab bar ── */
+  .tab-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 80px;
+    background: rgba(18,18,26,0.85);
+    backdrop-filter: blur(30px) saturate(180%);
+    -webkit-backdrop-filter: blur(30px) saturate(180%);
+    border-top: 1px solid var(--glass-stroke);
+    display: flex;
+    justify-content: space-around;
+    align-items: flex-start;
+    padding-top: 8px;
+    z-index: 90;
+  }
+  .tab-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    cursor: pointer;
+    padding: 4px 12px;
+    border: none;
+    background: none;
+    color: var(--text-tertiary);
+    font-size: 10px;
+    font-weight: 500;
+    transition: color 0.15s;
+  }
+  .tab-item .tab-icon { font-size: 22px; transition: transform 0.15s; }
+  .tab-item.active { color: var(--accent); }
+  .tab-item.active .tab-icon { transform: scale(1.08); }
+
+  /* ── Glass card ── */
+  .glass-card {
+    background: var(--glass-fill);
+    border: 1px solid var(--glass-stroke);
+    border-radius: var(--card-radius);
+    padding: 14px 16px;
+    margin-bottom: var(--card-spacing);
+    transition: background 0.15s;
+  }
+  .glass-card:hover { background: var(--glass-fill-hover); }
+  .glass-card-compact { padding: 10px 14px; border-radius: var(--small-radius); }
+
+  /* ── Metric grid ── */
+  .metric-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--card-spacing);
+  }
+  .metric-card {
+    background: var(--glass-fill);
+    border: 1px solid var(--glass-stroke);
+    border-radius: var(--card-radius);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .metric-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-transform: none;
+    letter-spacing: 0.1px;
+  }
+  .metric-value {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    font-family: var(--font-mono);
+  }
+  .metric-sub {
+    font-size: 10px;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+  }
+
+  /* ── Colors ── */
+  .c-profit { color: var(--profit); }
+  .c-loss { color: var(--loss); }
+  .c-accent { color: var(--accent); }
+  .c-margin-cross { color: var(--margin-cross); }
+  .c-margin-isolated { color: var(--margin-isolated); }
+  .c-secondary { color: var(--text-secondary); }
+  .c-tertiary { color: var(--text-tertiary); }
+
+  /* ── Holding row ── */
+  .holding-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+  .holding-icon {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--accent-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 17px;
+    flex-shrink: 0;
+  }
+  .holding-info { flex: 1; min-width: 0; }
+  .holding-name { font-size: 14px; font-weight: 600; }
+  .holding-qty { font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono); }
+  .holding-right { text-align: right; flex-shrink: 0; }
+  .holding-value { font-size: 14px; font-weight: 600; font-family: var(--font-mono); }
+  .holding-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+    margin-top: 2px;
+  }
+
+  /* ── Trade row ── */
+  .trade-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+  }
+  .trade-side {
+    font-size: 10px;
+    font-weight: 700;
+    width: 32px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .trade-info { flex: 1; min-width: 0; }
+  .trade-date { font-size: 11px; color: var(--text-secondary); }
+  .trade-price { font-size: 12px; font-family: var(--font-mono); }
+  .trade-right { text-align: right; flex-shrink: 0; }
+  .trade-qty { font-size: 12px; font-family: var(--font-mono); }
+  .trade-total { font-size: 10px; color: var(--text-secondary); font-family: var(--font-mono); }
+
+  /* ── Chart placeholder ── */
+  .chart-area {
+    height: 180px;
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--small-radius);
+    margin: 0 -2px;
+  }
+  .chart-area svg { width: 100%; height: 100%; }
+
+  /* ── Chip / Picker ── */
+  .chip-row {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+  .chip-row::-webkit-scrollbar { display: none; }
+  .chip {
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid var(--glass-stroke);
+    background: var(--glass-fill);
+    color: var(--text-secondary);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .chip.active {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 11px 20px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: var(--font-stack);
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: #000;
+  }
+  .btn-primary:hover { filter: brightness(1.1); }
+  .btn-primary:disabled { opacity: 0.4; cursor: default; filter: none; }
+  .btn-secondary {
+    background: var(--glass-fill);
+    border: 1px solid var(--glass-stroke);
+    color: var(--text-primary);
+  }
+  .btn-secondary:hover { background: var(--glass-fill-hover); }
+  .btn-danger {
+    background: var(--loss-dim);
+    border: 1px solid rgba(255,71,87,0.25);
+    color: var(--loss);
+  }
+  .btn-full { width: 100%; }
+  .btn-sm { padding: 8px 14px; font-size: 13px; border-radius: 10px; }
+
+  /* ── Segmented picker ── */
+  .segmented {
+    display: flex;
+    background: var(--glass-fill);
+    border: 1px solid var(--glass-stroke);
+    border-radius: 10px;
+    padding: 3px;
+    gap: 2px;
+  }
+  .segmented-btn {
+    flex: 1;
+    padding: 6px 8px;
+    border: none;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 500;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: var(--font-stack);
+  }
+  .segmented-btn.active {
+    background: var(--accent);
+    color: #000;
+    font-weight: 600;
+  }
+
+  /* ── Toggle ── */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 0;
+  }
+  .toggle-label { font-size: 14px; font-weight: 500; }
+  .toggle {
+    width: 44px;
+    height: 26px;
+    border-radius: 13px;
+    background: var(--text-tertiary);
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+  .toggle.on { background: var(--accent); }
+  .toggle-knob {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #fff;
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    transition: left 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+  .toggle.on .toggle-knob { left: 20px; }
+
+  /* ── Text input ── */
+  .text-input {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--glass-stroke);
+    background: var(--glass-fill);
+    color: var(--text-primary);
+    font-size: 13px;
+    font-family: var(--font-stack);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .text-input:focus { border-color: var(--accent); }
+  .text-input::placeholder { color: var(--text-tertiary); }
+
+  /* ── Insight card ── */
+  .insight-card { padding: 14px; }
+  .insight-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .insight-icon { font-size: 16px; }
+  .insight-title { font-size: 13px; font-weight: 600; flex: 1; }
+  .insight-symbol {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--accent-dim);
+    color: var(--accent);
+  }
+  .insight-body { font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 6px; }
+  .insight-category { font-size: 10px; font-weight: 600; text-transform: capitalize; }
+
+  /* ── Badge ── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  /* ── Section heading ── */
+  .section-heading {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* ── Footer text ── */
+  .footer-text {
+    text-align: center;
+    font-size: 10px;
+    color: var(--text-tertiary);
+    padding: 16px 0;
+  }
+
+  /* ── Margin stats ── */
+  .margin-stats {
+    display: flex;
+    gap: 12px;
+    padding: 8px 14px 12px;
+  }
+  .margin-stat {
+    flex: 1;
+  }
+  .margin-stat-label {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-tertiary);
+    margin-bottom: 1px;
+  }
+  .margin-stat-value {
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+  }
+
+  /* ── Divider ── */
+  .divider {
+    height: 1px;
+    background: rgba(255,255,255,0.06);
+    margin: 0 14px;
+  }
+
+  /* ── Alert row ── */
+  .alert-row { padding: 10px 16px; }
+  .alert-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .alert-name { font-size: 13px; font-weight: 600; }
+  .alert-fields { display: flex; flex-direction: column; gap: 6px; }
+  .alert-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .alert-field-label { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+  .alert-field input {
+    width: 70px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--glass-stroke);
+    background: var(--glass-fill);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-family: var(--font-mono);
+    outline: none;
+  }
+  .alert-field-unit { font-size: 10px; color: var(--text-tertiary); }
+
+  /* ── Sort bar ── */
+  .sort-bar {
+    display: flex;
+    gap: 6px;
+    margin-bottom: var(--card-spacing);
+  }
+  .sort-chip {
+    padding: 4px 12px;
+    border-radius: 14px;
+    font-size: 11px;
+    font-weight: 500;
+    border: 1px solid var(--glass-stroke);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: var(--font-stack);
+  }
+  .sort-chip.active {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* ── Date header ── */
+  .date-header {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 12px 4px 4px;
+  }
+
+  /* ── Onboarding ── */
+  .onboarding-icon {
+    font-size: 48px;
+    color: var(--accent);
+    text-align: center;
+    margin-bottom: 8px;
+  }
+  .onboarding-title {
+    font-size: 22px;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 6px;
+  }
+  .onboarding-sub {
+    font-size: 14px;
+    color: var(--text-secondary);
+    text-align: center;
+    line-height: 1.4;
+  }
+
+  /* ── Empty state ── */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 60px 30px;
+    gap: 12px;
+  }
+  .empty-icon { font-size: 40px; color: var(--text-tertiary); }
+  .empty-title { font-size: 18px; font-weight: 600; }
+  .empty-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+
+  /* ── Connection status ── */
+  .conn-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+  }
+  .conn-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+  }
+  .conn-dot.idle { background: var(--text-tertiary); }
+  .conn-dot.success { background: var(--profit); }
+  .conn-dot.failed { background: var(--loss); }
+
+  /* ── Profile bar ── */
+  .profile-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+  }
+  .profile-avatar {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: var(--accent-dim);
+    border: 1px solid var(--glass-stroke);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+  }
+  .profile-name { font-size: 16px; font-weight: 600; }
+  .profile-handle { font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono); }
+
+  /* ── Animations ── */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-in { animation: fadeIn 0.35s ease forwards; }
+
+  /* ── Scroll padding for safe area ── */
+  .screen { padding-top: 8px; }
+
+  /* ── Tiny chart line ── */
+  .mini-sparkline { width: 60px; height: 24px; }
+
+  /* ── Notification badge ── */
+  .notif-badge {
+    position: relative;
+  }
+  .notif-dot {
+    position: absolute;
+    top: -1px;
+    right: -1px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+</style>
+</head>
+<body>
+
+<div class="phone-frame">
+  <div class="phone-screen">
+    <!-- Dynamic Island -->
+    <div class="dynamic-island"></div>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+      <span class="time">9:41</span>
+      <div class="status-icons">
+        <span>5G</span>
+        <span>100%</span>
+      </div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="nav-bar" id="navBar">
+      <div class="nav-title" id="navTitle">Portfolio</div>
+      <div class="nav-action" id="navAction" title="Refresh">
+        <span>↻</span>
+      </div>
+    </div>
+
+    <!-- Screens -->
+    <div class="screen-container" id="screenContainer">
+
+      <!-- ═══ PORTFOLIO SCREEN ═══ -->
+      <div class="screen active" id="screen-portfolio">
+        <div class="metric-grid">
+          <div class="metric-card">
+            <div class="metric-label">Total Invested</div>
+            <div class="metric-value">$24,832.00</div>
+            <div class="metric-sub">5 assets</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Current Value</div>
+            <div class="metric-value">$31,245.50</div>
+            <div class="metric-sub c-tertiary">+25.86%</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Total P&L</div>
+            <div class="metric-value c-profit">+$6,413.50</div>
+            <div class="metric-sub c-profit">+25.86%</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Unrealized P&L</div>
+            <div class="metric-value c-profit">+$4,823.00</div>
+            <div class="metric-sub c-profit">+24.41%</div>
+          </div>
+          <div class="metric-card" style="grid-column: 1 / -1;">
+            <div class="metric-label">Realized P&L</div>
+            <div class="metric-value c-profit">+$1,590.50</div>
+            <div class="metric-sub c-tertiary">Since inception</div>
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 8px; margin-top: 4px;">
+          <span style="font-size:14px; font-weight:700;">Holdings</span>
+          <span style="font-size:11px; color:var(--text-tertiary);">Updated 2h ago</span>
+        </div>
+
+        <!-- Sort chips -->
+        <div class="sort-bar">
+          <button class="sort-chip active">Value ↓</button>
+          <button class="sort-chip">P&L %</button>
+          <button class="sort-chip">Name</button>
+          <button class="sort-chip">Qty</button>
+        </div>
+
+        <!-- Holdings list -->
+        <div class="glass-card glass-card-compact" style="padding:0; overflow:hidden;">
+          <div class="holding-row">
+            <div class="holding-icon">₿</div>
+            <div class="holding-info">
+              <div class="holding-name">Bitcoin</div>
+              <div class="holding-qty">0.45210000 BTC</div>
+            </div>
+            <div class="holding-right">
+              <div class="holding-value">$16,482.00</div>
+              <div class="holding-pill c-profit" style="background:var(--profit-dim);">▲ +$2,340.00</div>
+            </div>
+          </div>
+          <div class="divider"></div>
+          <div class="holding-row">
+            <div class="holding-icon" style="background:rgba(153,102,250,0.12);">Ξ</div>
+            <div class="holding-info">
+              <div class="holding-name">Ethereum</div>
+              <div class="holding-qty">8.25000000 ETH</div>
+            </div>
+            <div class="holding-right">
+              <div class="holding-value">$8,250.00</div>
+              <div class="holding-pill c-loss" style="background:var(--loss-dim);">▼ -$450.00</div>
+            </div>
+          </div>
+          <div class="divider"></div>
+          <div class="holding-row">
+            <div class="holding-icon" style="background:rgba(251,125,33,0.12);">◎</div>
+            <div class="holding-info">
+              <div class="holding-name">Solana</div>
+              <div class="holding-qty">120.50000000 SOL</div>
+            </div>
+            <div class="holding-right">
+              <div class="holding-value">$3,413.50</div>
+              <div class="holding-pill c-profit" style="background:var(--profit-dim);">▲ +$1,023.50</div>
+            </div>
+          </div>
+          <div class="divider"></div>
+          <div class="holding-row">
+            <div class="holding-icon" style="background:rgba(100,100,255,0.12);">●</div>
+            <div class="holding-info">
+              <div class="holding-name">Cardano</div>
+              <div class="holding-qty">5,000.00000000 ADA</div>
+            </div>
+            <div class="holding-right">
+              <div class="holding-value">$1,750.00</div>
+              <div class="holding-pill c-secondary" style="background:var(--glass-fill-hover);">─ $0.00</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ HOLDINGS SCREEN ═══ -->
+      <div class="screen" id="screen-holdings">
+        <div style="margin-bottom: 8px;">
+          <span style="font-size:12px; color:var(--text-secondary);">Tap a coin for details</span>
+        </div>
+
+        <div class="glass-card" style="padding:0; overflow:hidden;">
+          <div class="holding-row" style="cursor:pointer;" onclick="showScreen('coindetail')">
+            <div class="holding-icon">₿</div>
+            <div class="holding-info">
+              <div class="holding-name">Bitcoin</div>
+              <div class="holding-qty">Avg buy $34,250 · 0.4521 BTC</div>
+            </div>
+            <div class="holding-right">
+              <div class="holding-value">$16,482.00</div>
+              <div class="holding-pill c-profit" style="background:var(--profit-dim);">▲ +14.20%</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card" style="padding:0; overflow:hidden;">
+          <div class="holding-row" style="cursor:pointer;" onclick="showScreen('coindetail')">
+            <div class="holding-icon" style="background:rgba(153,102,250,0.12);">Ξ</div>
+            <div class="holding-info">
+              <div class="holding-name">Ethereum</div>
+              <div class="holding-qty">Avg buy $3,580 · 8.2500 ETH</div>
+            </div>
+            <div class="holding-right">
+              <div class="holding-value">$8,250.00</div>
+              <div class="holding-pill c-loss" style="background:var(--loss-dim);">▼ -5.18%</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card" style="padding:0; overflow:hidden;">
+          <div class="holding-row" style="cursor:pointer;" onclick="showScreen('coindetail')">
+            <div class="holding-icon" style="background:rgba(251,125,33,0.12);">◎</div>
+            <div class="holding-info">
+              <div class="holding-name">Solana</div>
+              <div class="holding-qty">Avg buy $142.50 · 120.50 SOL</div>
+            </div>
+            <div class="holding-right">
+              <div class="holding-value">$3,413.50</div>
+              <div class="holding-pill c-profit" style="background:var(--profit-dim);">▲ +42.85%</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card" style="padding:0; overflow:hidden;">
+          <div class="holding-row" style="cursor:pointer;" onclick="showScreen('coindetail')">
+            <div class="holding-icon" style="background:rgba(100,100,255,0.12);">●</div>
+            <div class="holding-info">
+              <div class="holding-name">Cardano</div>
+              <div class="holding-qty">Avg buy $0.58 · 5,000 ADA</div>
+            </div>
+            <div class="holding-right">
+              <div class="holding-value">$1,750.00</div>
+              <div class="holding-pill c-secondary" style="background:var(--glass-fill-hover);">─ +0.00%</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card" style="padding:0; overflow:hidden;">
+          <div class="holding-row" style="cursor:pointer;" onclick="showScreen('coindetail')">
+            <div class="holding-icon" style="background:rgba(153,102,250,0.12);">⬡</div>
+            <div class="holding-info">
+              <div class="holding-name">Polkadot</div>
+              <div class="holding-qty">Avg buy $4.20 · 500.00 DOT</div>
+            </div>
+            <div class="holding-right">
+              <div class="holding-value">$350.00</div>
+              <div class="holding-pill c-loss" style="background:var(--loss-dim);">▼ -16.67%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ COIN DETAIL SCREEN ═══ -->
+      <div class="screen" id="screen-coindetail">
+        <button class="btn btn-secondary btn-sm" onclick="showScreen('holdings')" style="margin-bottom:12px; padding:6px 14px; font-size:12px;">
+          ← Back
+        </button>
+
+        <!-- Summary card -->
+        <div class="glass-card">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+            <div class="holding-icon" style="width:42px; height:42px; font-size:20px;">₿</div>
+            <div>
+              <div style="font-size:16px; font-weight:700;">Bitcoin</div>
+              <div style="font-size:12px; color:var(--text-secondary);">BTC/USDT · $36,500.00</div>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+            <div>
+              <div style="font-size:10px; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.5px;">Avg Buy</div>
+              <div style="font-size:13px; font-weight:600; font-family:var(--font-mono);">$34,250.00</div>
+            </div>
+            <div>
+              <div style="font-size:10px; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.5px;">Quantity</div>
+              <div style="font-size:13px; font-weight:600; font-family:var(--font-mono);">0.4521 BTC</div>
+            </div>
+            <div>
+              <div style="font-size:10px; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.5px;">Invested</div>
+              <div style="font-size:13px; font-weight:600; font-family:var(--font-mono);">$15,481.73</div>
+            </div>
+            <div>
+              <div style="font-size:10px; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.5px;">Current</div>
+              <div style="font-size:13px; font-weight:600; font-family:var(--font-mono);">$16,482.00</div>
+            </div>
+            <div style="grid-column:1/-1;">
+              <div style="font-size:10px; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.5px;">Unrealized P&L</div>
+              <div style="font-size:18px; font-weight:700; font-family:var(--font-mono);" class="c-profit">+$1,000.27 (+6.46%)</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chart -->
+        <div style="margin-bottom: 8px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+            <span style="font-size:13px; font-weight:600;">Price Chart</span>
+            <div class="segmented" style="width:auto;">
+              <button class="segmented-btn">1H</button>
+              <button class="segmented-btn active">4H</button>
+              <button class="segmented-btn">1D</button>
+              <button class="segmented-btn">1W</button>
+            </div>
+          </div>
+          <div class="glass-card" style="padding:8px; overflow:hidden;">
+            <svg viewBox="0 0 340 150" preserveAspectRatio="none" style="width:100%;height:150px;">
+              <defs>
+                <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="rgba(240,185,11,0.25)"/>
+                  <stop offset="100%" stop-color="rgba(240,185,11,0)"/>
+                </linearGradient>
+              </defs>
+              <!-- Grid lines -->
+              <line x1="0" y1="37" x2="340" y2="37" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+              <line x1="0" y1="75" x2="340" y2="75" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+              <line x1="0" y1="112" x2="340" y2="112" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+              <!-- Area fill -->
+              <path d="M0,120 C20,115 40,100 60,105 C80,90 100,85 120,80 C140,70 160,65 180,55 C200,50 220,48 240,45 C260,42 280,38 300,35 C320,32 335,30 340,28 L340,150 L0,150 Z" fill="url(#chartGrad)"/>
+              <!-- Line -->
+              <path d="M0,120 C20,115 40,100 60,105 C80,90 100,85 120,80 C140,70 160,65 180,55 C200,50 220,48 240,45 C260,42 280,38 300,35 C320,32 335,30 340,28" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>
+              <!-- End dot -->
+              <circle cx="340" cy="28" r="4" fill="var(--accent)"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Trade list -->
+        <div style="margin-bottom:6px;">
+          <span style="font-size:14px; font-weight:700;">Trades</span>
+        </div>
+        <div class="glass-card" style="padding:0; overflow:hidden;">
+          <div class="trade-row">
+            <div class="trade-side c-profit">BUY</div>
+            <div class="trade-info">
+              <div class="trade-date">Aug 21, 2026 · 14:32</div>
+              <div class="trade-price">@ $34,250.00</div>
+            </div>
+            <div class="trade-right">
+              <div class="trade-qty">0.2500</div>
+              <div class="trade-total">$8,562.50</div>
+            </div>
+          </div>
+          <div class="divider"></div>
+          <div class="trade-row">
+            <div class="trade-side c-loss">SELL</div>
+            <div class="trade-info">
+              <div class="trade-date">Aug 19, 2026 · 09:15</div>
+              <div class="trade-price">@ $36,100.00</div>
+            </div>
+            <div class="trade-right">
+              <div class="trade-qty">0.1000</div>
+              <div class="trade-total">$3,610.00</div>
+            </div>
+          </div>
+          <div class="divider"></div>
+          <div class="trade-row">
+            <div class="trade-side c-profit">BUY</div>
+            <div class="trade-info">
+              <div class="trade-date">Aug 15, 2026 · 11:48</div>
+              <div class="trade-price">@ $34,100.00</div>
+            </div>
+            <div class="trade-right">
+              <div class="trade-qty">0.3000</div>
+              <div class="trade-total">$10,230.00</div>
+            </div>
+          </div>
+          <div class="divider"></div>
+          <div class="trade-row">
+            <div class="trade-side c-profit">BUY</div>
+            <div class="trade-info">
+              <div class="trade-date">Aug 10, 2026 · 16:22</div>
+              <div class="trade-price">@ $34,400.00</div>
+            </div>
+            <div class="trade-right">
+              <div class="trade-qty">0.2021</div>
+              <div class="trade-total">$6,952.14</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ HISTORY SCREEN ═══ -->
+      <div class="screen" id="screen-history">
+        <div class="chip-row" style="margin-bottom:12px;">
+          <button class="chip active">All</button>
+          <button class="chip">BTC</button>
+          <button class="chip">ETH</button>
+          <button class="chip">SOL</button>
+          <button class="chip">ADA</button>
+          <button class="chip">DOT</button>
+        </div>
+
+        <div class="date-header">Today · Aug 23</div>
+        <div class="glass-card" style="padding:0; overflow:hidden;">
+          <div class="trade-row">
+            <div class="trade-side c-profit">BUY</div>
+            <div class="trade-info">
+              <div class="trade-date">14:32</div>
+              <div class="trade-price">@ $34,250.00</div>
+            </div>
+            <div class="trade-right">
+              <div class="trade-qty">0.2500 BTC</div>
+              <div class="trade-total">$8,562.50</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="date-header">Yesterday · Aug 22</div>
+        <div class="glass-card" style="padding:0; overflow:hidden;">
+          <div class="trade-row">
+            <div class="trade-side c-loss">SELL</div>
+            <div class="trade-info">
+              <div class="trade-date">09:15</div>
+              <div class="trade-price">@ $36,100.00</div>
+            </div>
+            <div class="trade-right">
+              <div class="trade-qty">0.1000 BTC</div>
+              <div class="trade-total">$3,610.00</div>
+            </div>
+          </div>
+          <div class="divider"></div>
+          <div class="trade-row">
+            <div class="trade-side c-profit">BUY</div>
+            <div class="trade-info">
+              <div class="trade-date">08:05</div>
+              <div class="trade-price">@ $3,420.00</div>
+            </div>
+            <div class="trade-right">
+              <div class="trade-qty">2.0000 ETH</div>
+              <div class="trade-total">$6,840.00</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="date-header">Aug 21</div>
+        <div class="glass-card" style="padding:0; overflow:hidden;">
+          <div class="trade-row">
+            <div class="trade-side c-profit">BUY</div>
+            <div class="trade-info">
+              <div class="trade-date">11:48</div>
+              <div class="trade-price">@ $142.30</div>
+            </div>
+            <div class="trade-right">
+              <div class="trade-qty">50.00 SOL</div>
+              <div class="trade-total">$7,115.00</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="date-header">Aug 20</div>
+        <div class="glass-card" style="padding:0; overflow:hidden;">
+          <div class="trade-row">
+            <div class="trade-side c-loss">SELL</div>
+            <div class="trade-info">
+              <div class="trade-date">16:22</div>
+              <div class="trade-price">@ $0.58</div>
+            </div>
+            <div class="trade-right">
+              <div class="trade-qty">1,000 ADA</div>
+              <div class="trade-total">$580.00</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="date-header">Aug 18</div>
+        <div class="glass-card" style="padding:0; overflow:hidden;">
+          <div class="trade-row">
+            <div class="trade-side c-profit">BUY</div>
+            <div class="trade-info">
+              <div class="trade-date">10:05</div>
+              <div class="trade-price">@ $34,100.00</div>
+            </div>
+            <div class="trade-right">
+              <div class="trade-qty">0.2021 BTC</div>
+              <div class="trade-total">$6,892.14</div>
+            </div>
+          </div>
+          <div class="divider"></div>
+          <div class="trade-row">
+            <div class="trade-side c-profit">BUY</div>
+            <div class="trade-info">
+              <div class="trade-date">09:30</div>
+              <div class="trade-price">@ $3,280.00</div>
+            </div>
+            <div class="trade-right">
+              <div class="trade-qty">3.5000 ETH</div>
+              <div class="trade-total">$11,480.00</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ INSIGHTS SCREEN ═══ -->
+      <div class="screen" id="screen-insights">
+        <!-- Profit breakdown -->
+        <div class="glass-card">
+          <div style="font-size:13px; font-weight:700; margin-bottom:10px; display:flex; align-items:center; gap:8px;">
+            <span>📊</span> Profit Breakdown
+          </div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:13px; width:32px;">₿</span>
+              <div style="flex:1;">
+                <div style="font-size:11px; color:var(--text-secondary);">Bitcoin</div>
+                <div style="height:4px; background:var(--glass-fill-hover); border-radius:2px; margin-top:3px; overflow:hidden;">
+                  <div style="width:62%; height:100%; background:var(--profit); border-radius:2px;"></div>
+                </div>
+              </div>
+              <span class="c-profit" style="font-size:12px; font-weight:600; font-family:var(--font-mono);">+$2,340</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:13px; width:32px;">◎</span>
+              <div style="flex:1;">
+                <div style="font-size:11px; color:var(--text-secondary);">Solana</div>
+                <div style="height:4px; background:var(--glass-fill-hover); border-radius:2px; margin-top:3px; overflow:hidden;">
+                  <div style="width:26%; height:100%; background:var(--profit); border-radius:2px;"></div>
+                </div>
+              </div>
+              <span class="c-profit" style="font-size:12px; font-weight:600; font-family:var(--font-mono);">+$1,024</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:13px; width:32px;">Ξ</span>
+              <div style="flex:1;">
+                <div style="font-size:11px; color:var(--text-secondary);">Ethereum</div>
+                <div style="height:4px; background:var(--glass-fill-hover); border-radius:2px; margin-top:3px; overflow:hidden;">
+                  <div style="width:10%; height:100%; background:var(--loss); border-radius:2px;"></div>
+                </div>
+              </div>
+              <span class="c-loss" style="font-size:12px; font-weight:600; font-family:var(--font-mono);">−$450</span>
+            </div>
+          </div>
+          <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--glass-stroke); display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:11px; color:var(--text-secondary);">Avg profit/trade</span>
+            <span class="c-profit" style="font-size:13px; font-weight:600; font-family:var(--font-mono);">+$18.32</span>
+          </div>
+        </div>
+
+        <!-- Header card -->
+        <div class="glass-card">
+          <div class="section-heading"><span>🧠</span> AI Insights</div>
+          <p style="font-size:12px; color:var(--text-secondary); margin-bottom:8px; line-height:1.5;">
+            Private, on-device analysis of your trading patterns.
+          </p>
+          <p style="font-size:11px; color:var(--text-tertiary); margin-bottom:12px;">
+            Last updated 2h ago
+          </p>
+          <button class="btn btn-primary btn-full" style="margin-bottom:8px;">
+            <span>✨</span> Analyze
+          </button>
+          <button class="btn btn-secondary btn-full" style="margin-bottom:8px;">
+            <span>💬</span> Ask a question
+          </button>
+        </div>
+
+        <!-- Insights -->
+        <div class="glass-card insight-card">
+          <div class="insight-header">
+            <span class="insight-icon c-accent">📊</span>
+            <span class="insight-title">BTC concentration is high</span>
+            <span class="insight-symbol">BTC</span>
+          </div>
+          <div class="insight-body">62% of your portfolio is in Bitcoin. Consider diversifying to reduce single-asset risk.</div>
+          <div class="insight-category c-accent">concentration · warning</div>
+        </div>
+
+        <div class="glass-card insight-card">
+          <div class="insight-header">
+            <span class="insight-icon c-profit">📈</span>
+            <span class="insight-title">Healthy DCA pattern</span>
+          </div>
+          <div class="insight-body">You've bought BTC at 4 different prices with consistent sizing. Your average cost basis tracks well below current market price.</div>
+          <div class="insight-category c-profit">performance · info</div>
+        </div>
+
+        <div class="glass-card insight-card">
+          <div class="insight-header">
+            <span class="insight-icon c-loss">⚠️</span>
+            <span class="insight-title">High SOL volatility detected</span>
+            <span class="insight-symbol" style="background:var(--loss-dim); color:var(--loss);">SOL</span>
+          </div>
+          <div class="insight-body">Your Solana position moved +42.85% — significantly above your portfolio average. Consider taking partial profits.</div>
+          <div class="insight-category c-loss">risk · warning</div>
+        </div>
+
+        <div class="footer-text">
+          <span style="font-size:12px;">🔒</span> Processed on device — your trades never leave your iPhone.
+        </div>
+      </div>
+
+      <!-- ═══ SETTINGS SCREEN ═══ -->
+      <div class="screen" id="screen-settings">
+        <!-- API Credentials -->
+        <div class="section-heading"><span>🔑</span> API Credentials</div>
+        <div class="glass-card">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+            <span class="conn-dot success"></span>
+            <span style="font-size:13px; font-weight:500;">API key configured</span>
+            <span style="flex:1;"></span>
+            <button class="btn btn-danger btn-sm" style="padding:5px 12px; font-size:11px;">Remove</button>
+          </div>
+          <div style="display:flex; gap:8px; margin-bottom:8px;">
+            <input class="text-input" placeholder="API Key" value="kL9x..." readonly style="flex:1; font-family:var(--font-mono); font-size:12px;">
+            <input class="text-input" placeholder="Secret Key" value="••••••••" readonly style="flex:1; font-family:var(--font-mono); font-size:12px;">
+          </div>
+        </div>
+
+        <!-- Connection -->
+        <div class="section-heading"><span>🌐</span> Connection</div>
+        <div class="glass-card">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div class="conn-status">
+              <span class="conn-dot success"></span>
+              <span style="font-size:13px;">Connected to Binance</span>
+            </div>
+            <button class="btn btn-secondary btn-sm">Test</button>
+          </div>
+        </div>
+
+        <!-- Trading Mode -->
+        <div class="section-heading"><span>🔄</span> Trading Mode</div>
+        <div class="glass-card">
+          <div class="segmented" style="margin-bottom:8px;">
+            <button class="segmented-btn active">Spot</button>
+            <button class="segmented-btn">Cross</button>
+            <button class="segmented-btn">Isolated</button>
+          </div>
+          <p style="font-size:10px; color:var(--text-tertiary);">Margin trading requires margin to be enabled on your Binance account.</p>
+        </div>
+
+        <!-- Sync Stats -->
+        <div class="section-heading"><span>📊</span> Sync Stats</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:var(--card-spacing); margin-bottom:var(--section-spacing);">
+          <div class="metric-card">
+            <div class="metric-label">Total Trades</div>
+            <div class="metric-value">247</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Synced Symbols</div>
+            <div class="metric-value">5</div>
+          </div>
+        </div>
+
+        <!-- Price Alerts -->
+        <div class="section-heading"><span>🔔</span> Price Alerts</div>
+        <div class="glass-card">
+          <div class="toggle-row" style="margin-bottom:10px;">
+            <span class="toggle-label">Enable Notifications</span>
+            <div class="toggle" id="toggleNotif" onclick="toggleSwitch(this)"><div class="toggle-knob"></div></div>
+          </div>
+          <div style="font-size:10px; color:var(--text-tertiary); margin-bottom:12px;">Notifications must be enabled to receive price alerts.</div>
+
+          <div class="alert-row" style="padding:0; border-bottom:1px solid var(--glass-stroke); padding-bottom:10px; margin-bottom:10px;">
+            <div class="alert-top">
+              <span class="alert-name">₿ Bitcoin</span>
+              <div class="toggle on" onclick="toggleSwitch(this)"><div class="toggle-knob"></div></div>
+            </div>
+            <div class="alert-fields">
+              <div class="alert-field">
+                <span class="alert-field-label">Notify on profit increase of</span>
+                <input type="text" value="100" />
+                <span class="alert-field-unit">USDT</span>
+              </div>
+              <div class="alert-field">
+                <span class="alert-field-label">Notify on price move of</span>
+                <input type="text" value="5" />
+                <span class="alert-field-unit">%</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="alert-row" style="padding:0;">
+            <div class="alert-top">
+              <span class="alert-name">◎ Solana</span>
+              <div class="toggle" onclick="toggleSwitch(this)"><div class="toggle-knob"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Notification Log -->
+        <div class="section-heading"><span>📋</span> Notification Log</div>
+        <div class="glass-card" style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:18px;">🔔</span>
+            <span style="font-size:14px; font-weight:500;">View notification history</span>
+          </div>
+          <span style="color:var(--text-tertiary); font-size:16px;">›</span>
+        </div>
+
+        <!-- AI Insights -->
+        <div class="section-heading"><span>🧠</span> AI Insights</div>
+        <div class="glass-card">
+          <div class="toggle-row">
+            <div>
+              <span class="toggle-label">On-device insights</span>
+              <p style="font-size:10px; color:var(--text-tertiary); margin-top:2px;">Insights are generated on your device and never leave your iPhone.</p>
+            </div>
+            <div class="toggle on" onclick="toggleSwitch(this)"><div class="toggle-knob"></div></div>
+          </div>
+        </div>
+
+        <!-- Danger Zone -->
+        <div class="section-heading c-loss"><span>⚠️</span> Danger Zone</div>
+        <div class="glass-card" style="border-color:rgba(255,71,87,0.2);">
+          <button class="btn btn-danger btn-full">
+            <span>🗑️</span> Clear All Data
+          </button>
+          <p style="font-size:10px; color:var(--text-tertiary); text-align:center; margin-top:8px;">This will delete all trades, sync data, and API keys.</p>
+        </div>
+      </div>
+
+      <!-- ═══ ONBOARDING SCREEN ═══ (hidden by default) -->
+      <div class="screen" id="screen-onboarding">
+        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; padding:20px; gap:20px;">
+          <div class="onboarding-icon">📈</div>
+          <div class="onboarding-title">Welcome to EasyCrypto</div>
+          <div class="onboarding-sub">Add your Binance API credentials to get started.</div>
+          <div style="width:100%; max-width:300px; margin-top:12px;">
+            <div class="glass-card">
+              <div class="section-heading"><span>🔑</span> API Credentials</div>
+              <input class="text-input" placeholder="API Key" style="margin-bottom:8px;">
+              <input class="text-input" placeholder="Secret Key" style="margin-bottom:12px;">
+              <button class="btn btn-primary btn-full">Save Credentials</button>
+            </div>
+          </div>
+          <p style="font-size:11px; color:var(--text-tertiary); text-align:center; line-height:1.5;">
+            You only need "Enable Reading" permission.<br>No trading or withdrawal access required.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab Bar -->
+    <div class="tab-bar" id="tabBar">
+      <button class="tab-item active" data-tab="portfolio" onclick="switchTab('portfolio')">
+        <span class="tab-icon">📊</span>
+        <span>Portfolio</span>
+      </button>
+      <button class="tab-item" data-tab="holdings" onclick="switchTab('holdings')">
+        <span class="tab-icon">₿</span>
+        <span>Holdings</span>
+      </button>
+      <button class="tab-item" data-tab="history" onclick="switchTab('history')">
+        <span class="tab-icon">🕐</span>
+        <span>History</span>
+      </button>
+      <button class="tab-item" data-tab="insights" onclick="switchTab('insights')">
+        <span class="tab-icon">🧠</span>
+        <span>Insights</span>
+      </button>
+      <button class="tab-item" data-tab="settings" onclick="switchTab('settings')">
+        <span class="tab-icon">⚙️</span>
+        <span>Settings</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const tabNames = {
+    portfolio: 'Portfolio',
+    holdings: 'Holdings',
+    history: 'History',
+    insights: 'Insights',
+    settings: 'Settings'
+  };
+  const navActions = {
+    portfolio: '<span>↻</span>',
+    holdings: '<span style="font-size:12px; font-weight:600;">Sort</span>',
+    history: '<span style="font-size:12px; font-weight:600;">Filter</span>',
+    insights: '<span></span>',
+    settings: '<span></span>'
+  };
+
+  let currentTab = 'portfolio';
+  let screenStack = {};
+
+  function switchTab(tab) {
+    if (tab === currentTab) return;
+
+    // Deactivate old
+    document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.screen').forEach(s => {
+      s.classList.remove('active');
+      // If not in stack, add it
+      if (s.id === 'screen-' + tab && !screenStack[tab]) {
+        screenStack[tab] = true;
+      }
+    });
+
+    // Activate new
+    document.querySelector('[data-tab="' + tab + '"]').classList.add('active');
+    const screen = document.getElementById('screen-' + tab);
+    if (screen) screen.classList.add('active');
+
+    // Update nav
+    document.getElementById('navTitle').textContent = tabNames[tab] || tab;
+    document.getElementById('navAction').innerHTML = navActions[tab] || '';
+
+    // Show/hide nav action
+    const action = document.getElementById('navAction');
+    action.style.display = navActions[tab] && navActions[tab].trim() ? 'flex' : 'none';
+
+    currentTab = tab;
+  }
+
+  function showScreen(screenId) {
+    const screen = document.getElementById('screen-' + screenId);
+    if (!screen) return;
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    screen.classList.add('active');
+
+    if (screenId === 'coindetail') {
+      document.getElementById('navTitle').textContent = 'Bitcoin';
+      document.getElementById('navAction').innerHTML = '';
+      document.getElementById('navAction').style.display = 'none';
+      document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+    }
+  }
+
+  function toggleSwitch(el) {
+    el.classList.toggle('on');
+  }
+
+  // Sort chips
+  document.querySelectorAll('.sort-chip').forEach(chip => {
+    chip.addEventListener('click', function() {
+      this.parentElement.querySelectorAll('.sort-chip').forEach(c => c.classList.remove('active'));
+      this.classList.add('active');
+    });
+  });
+
+  // Segmented buttons
+  document.querySelectorAll('.segmented').forEach(seg => {
+    seg.querySelectorAll('.segmented-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        seg.querySelectorAll('.segmented-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+      });
+    });
+  });
+
+  // History chips
+  document.querySelectorAll('#screen-history .chip').forEach(chip => {
+    chip.addEventListener('click', function() {
+      this.parentElement.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      this.classList.add('active');
+    });
+  });
+
+  // Initial state
+  document.getElementById('navAction').style.display = 'flex';
+
+  // Animate metric values
+  function animateValue(el, end, prefix, suffix) {
+    let start = 0;
+    const duration = 800;
+    const startTime = performance.now();
+    function update(now) {
+      const progress = Math.min((now - startTime) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const current = Math.floor(start + (end - start) * eased);
+      el.textContent = prefix + current.toLocaleString() + suffix;
+      if (progress < 1) requestAnimationFrame(update);
+    }
+    requestAnimationFrame(update);
+  }
+</script>
+
+</body>
+</html>

@@ -444,56 +444,16 @@ struct PortfolioSortTests {
     }
 }
 
-// MARK: - Trades Persisted
-
-@Suite("Given a PortfolioProcessor persisting trades")
-struct PortfolioTradesPersistenceTests {
-
-    @Test("When refresh imports trades, then trades are persisted to SwiftData")
-    func tradesPersisted() async throws {
-        let container = try makeContainer()
-
-        let importService = TradeImportService(
-            sync: { _ in
-                TradeImportResult(
-                    mappedTrades: [
-                        makeMappedTrade(id: 1, symbol: "BTCUSDT", asset: "BTC"),
-                        makeMappedTrade(id: 2, symbol: "ETHUSDT", asset: "ETH"),
-                    ],
-                    syncUpdates: [
-                        SyncUpdate(symbol: "BTCUSDT", lastTradeId: 1, syncDate: Date()),
-                        SyncUpdate(symbol: "ETHUSDT", lastTradeId: 2, syncDate: Date()),
-                    ]
-                )
-            }
-        )
-
-        let processor = try makeProcessor(
-            tradeImportService: importService,
-            priceService: PriceService(fetchPrices: { _ in ["BTCUSDT": 50000.0, "ETHUSDT": 3000.0] }),
-            modelContainer: container
-        )
-
-        await processor.handle(.refresh)
-
-        let context = ModelContext(container)
-        let descriptor = FetchDescriptor<Trade>()
-        let trades = try context.fetch(descriptor)
-        #expect(trades.count == 2)
-    }
-}
-
-// MARK: - Margin Mode
+// MARK: - Margin Holdings Use Live Service
 
 @Suite("Given a PortfolioProcessor with margin trades")
 struct PortfolioMarginModeTests {
 
-    @Test("When crossMargin trades exist, then summary includes them")
-    func crossMarginRefreshPath() async throws {
+    @Test("When loadPersisted is called, then crossMargin uses live service not stale SwiftData")
+    func loadPersistedCrossMarginUsesLiveService() async throws {
         let container = try makeContainer()
         let context = ModelContext(container)
 
-        // Seed cross-margin trades
         context.insert(Trade(
             binanceTradeId: 1, symbol: "BTCUSDT", asset: "BTC",
             price: 50000, quantity: 1.0, quoteQuantity: 50000,
@@ -502,15 +462,21 @@ struct PortfolioMarginModeTests {
             isBuyer: true, orderId: 100,
             tradingMode: .crossMargin
         ))
-        context.insert(Trade(
-            binanceTradeId: 2, symbol: "BTCUSDT", asset: "BTC",
-            price: 60000, quantity: 0.5, quoteQuantity: 30000,
-            commission: 0, commissionAsset: "USDT",
-            timestamp: Date(timeIntervalSince1970: 1_700_100_000),
-            isBuyer: false, orderId: 101,
-            tradingMode: .crossMargin
+        // Stale SwiftData: shows 1.0 BTC netAsset (position was reduced on exchange)
+        context.insert(CrossMarginBalance(
+            asset: "BTC", borrowed: 0, free: 1.0, locked: 0,
+            netAsset: 1.0, interest: 0
         ))
         try context.save()
+
+        let liveCrossBalanceService = MarginBalanceService(
+            fetchCrossMarginAccount: { nil },
+            fetchCrossMarginBalances: {
+                [CrossMarginBalance(asset: "BTC", borrowed: 0, free: 0.6, locked: 0, netAsset: 0.5, interest: 0.1)]
+            },
+            fetchIsolatedMarginBalances: { _ in nil },
+            fetchAllIsolatedMarginBalances: { [] }
+        )
 
         let processor = try makeProcessor(
             tradeImportService: .noop,
@@ -518,22 +484,21 @@ struct PortfolioMarginModeTests {
             modelContainer: container,
             balanceService: .noop,
             marginTradeImportService: .noop,
-            marginBalanceService: .noop
+            marginBalanceService: liveCrossBalanceService
         )
 
-        await processor.handle(.refresh)
+        await processor.handle(.loadPersisted)
 
-        // Summary includes crossMargin holdings
-        #expect(processor.state.summary.crossMargin.holdingsCount >= 1)
-        #expect(processor.state.summary.crossMargin.realizedPnL > 0)
+        // Must use live service value (0.5), not stale SwiftData (1.0)
+        #expect(processor.state.summary.crossMargin.holdingsCount == 1)
+        #expect(processor.state.summary.crossMargin.currentValueUSDT == 32500.0)
     }
 
-    @Test("When isolatedMargin trades and balance exist, then summary reflects them")
-    func isolatedMarginRefreshPath() async throws {
+    @Test("When loadPersisted is called, then isolatedMargin uses live service not stale SwiftData")
+    func loadPersistedIsolatedMarginUsesLiveService() async throws {
         let container = try makeContainer()
         let context = ModelContext(container)
 
-        // Seed isolated-margin trade
         context.insert(Trade(
             binanceTradeId: 1, symbol: "BTCUSDT", asset: "BTC",
             price: 50000, quantity: 1.0, quoteQuantity: 50000,
@@ -542,22 +507,97 @@ struct PortfolioMarginModeTests {
             isBuyer: true, orderId: 100,
             tradingMode: .isolatedMargin
         ))
-        // Seed a MarginBalance for isolated position
+        // Stale SwiftData: shows 1.0 BTC (position already closed on exchange)
         context.insert(MarginBalance(
             symbol: "BTCUSDT",
             isolatedMarginKey: "BTCUSDT#BTC",
             asset: "BTC",
-            borrowed: 0.5,
-            free: 0.3,
-            locked: 0.2,
-            interest: 0.01
+            borrowed: 0, free: 1.0, locked: 0,
+            interest: 0
         ))
         try context.save()
 
+        let liveIsolatedBalanceService = MarginBalanceService(
+            fetchCrossMarginAccount: { nil },
+            fetchCrossMarginBalances: { [] },
+            fetchIsolatedMarginBalances: { _ in nil },
+            fetchAllIsolatedMarginBalances: {
+                [
+                    IsolatedMarginBalance(
+                        symbol: "BTCUSDT", asset: "BTC",
+                        role: .base,
+                        borrowed: 0, free: 0, locked: 0,
+                        interest: 0, netAsset: 0.0
+                    ),
+                ]
+            }
+        )
+
         let processor = try makeProcessor(
             tradeImportService: .noop,
-            priceService: PriceService(fetchPrices: { _ in ["BTCUSDT": 60000.0] }),
+            priceService: PriceService(fetchPrices: { _ in ["BTCUSDT": 65000.0] }),
             modelContainer: container,
+            balanceService: .noop,
+            marginTradeImportService: .noop,
+            marginBalanceService: liveIsolatedBalanceService
+        )
+
+        await processor.handle(.loadPersisted)
+
+        // Must use live service (0.0), not stale SwiftData (1.0)
+        #expect(processor.state.summary.isolatedMargin.holdingsCount == 0)
+    }
+
+    @Test("When refresh is called, then crossMargin uses live balance service not stale SwiftData")
+    func refreshCrossMarginUsesLiveNotStale() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+
+        context.insert(Trade(
+            binanceTradeId: 1, symbol: "BTCUSDT", asset: "BTC",
+            price: 50000, quantity: 1.0, quoteQuantity: 50000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+            isBuyer: true, orderId: 100,
+            tradingMode: .crossMargin
+        ))
+        // Stale SwiftData (1.0 BTC netAsset)
+        context.insert(CrossMarginBalance(
+            asset: "BTC", borrowed: 0, free: 1.0, locked: 0,
+            netAsset: 1.0, interest: 0
+        ))
+        try context.save()
+
+        let liveCrossBalanceService = MarginBalanceService(
+            fetchCrossMarginAccount: { nil },
+            fetchCrossMarginBalances: {
+                [CrossMarginBalance(asset: "BTC", borrowed: 0, free: 0.6, locked: 0, netAsset: 0.5, interest: 0.1)]
+            },
+            fetchIsolatedMarginBalances: { _ in nil },
+            fetchAllIsolatedMarginBalances: { [] }
+        )
+
+        let processor = try makeProcessor(
+            tradeImportService: .noop,
+            priceService: PriceService(fetchPrices: { _ in ["BTCUSDT": 65000.0] }),
+            modelContainer: container,
+            balanceService: .noop,
+            marginTradeImportService: .noop,
+            marginBalanceService: liveCrossBalanceService
+        )
+
+        await processor.handle(.refresh)
+
+        // Must reflect live balance (0.5), not stale SwiftData (1.0)
+        #expect(processor.state.summary.crossMargin.currentValueUSDT == 32500.0)
+    }
+
+    @Test("When no margin balances exist, then holdings are empty regardless of trades")
+    func noMarginBalancesProducesEmptyHoldings() async throws {
+        let processor = try makeProcessor(
+            tradeImportService: .noop,
+            priceService: PriceService(fetchPrices: { _ in ["BTCUSDT": 50000.0] }),
+            modelContainer: try makeContainer(),
             balanceService: .noop,
             marginTradeImportService: .noop,
             marginBalanceService: .noop
@@ -565,9 +605,60 @@ struct PortfolioMarginModeTests {
 
         await processor.handle(.refresh)
 
-        // Isolated holdings from balance (0.3 free + 0.2 locked = 0.5 net, minus 0.5 borrowed = 0)
-        // With FIFO: 1.0 bought, nothing sold, balance net = 0.3+0.2-0.5 = 0
-        // So this position has 0 net quantity but a margin position exists
-        #expect(processor.state.summary.isolatedMargin.holdingsCount >= 0)
+        #expect(processor.state.summary.crossMargin.holdingsCount == 0)
+        #expect(processor.state.summary.isolatedMargin.holdingsCount == 0)
+    }
+
+    @Test("When isolatedMargin balances include base and quote assets, then only base is counted in portfolio total")
+    func isolatedMarginQuoteAssetExcludedFromCurrentValue() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+
+        context.insert(Trade(
+            binanceTradeId: 1, symbol: "BTCUSDT", asset: "BTC",
+            price: 50000, quantity: 0.1, quoteQuantity: 5000,
+            commission: 0, commissionAsset: "BTC",
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+            isBuyer: true, orderId: 100,
+            tradingMode: .isolatedMargin
+        ))
+        try context.save()
+
+        let liveIsolatedBalanceService = MarginBalanceService(
+            fetchCrossMarginAccount: { nil },
+            fetchCrossMarginBalances: { [] },
+            fetchIsolatedMarginBalances: { _ in nil },
+            fetchAllIsolatedMarginBalances: {
+                [
+                    IsolatedMarginBalance(
+                        symbol: "BTCUSDT", asset: "BTC",
+                        role: .base,
+                        borrowed: 0, free: 0, locked: 0,
+                        interest: 0, netAsset: 0.1
+                    ),
+                    IsolatedMarginBalance(
+                        symbol: "BTCUSDT", asset: "USDT",
+                        role: .quote,
+                        borrowed: 0, free: 5000, locked: 0,
+                        interest: 0, netAsset: 5000
+                    ),
+                ]
+            }
+        )
+
+        let processor = try makeProcessor(
+            tradeImportService: .noop,
+            priceService: PriceService(fetchPrices: { _ in ["BTCUSDT": 65000.0] }),
+            modelContainer: container,
+            balanceService: .noop,
+            marginTradeImportService: .noop,
+            marginBalanceService: liveIsolatedBalanceService
+        )
+
+        await processor.handle(.loadPersisted)
+
+        // Only BTC (base asset) should be in holdings — USDT (quote asset) excluded
+        #expect(processor.state.summary.isolatedMargin.holdingsCount == 1)
+        #expect(processor.state.summary.isolatedMargin.currentValueUSDT == 6500.0)
     }
 }

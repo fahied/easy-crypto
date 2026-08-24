@@ -1,0 +1,9 @@
+schemaVersion: 1
+enabledWorkflows:
+  - simulator
+  - debugging
+sessionDefaults:
+  projectPath: ./EasyCrypto.xcodeproj
+  scheme: EasyCrypto
+  simulatorName: iPhone 17
+  bundleId: com.fahied.EasyCrypto

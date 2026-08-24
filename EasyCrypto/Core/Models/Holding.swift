@@ -6,7 +6,7 @@
 import Foundation
 
 nonisolated struct Holding: Equatable, Sendable, Identifiable, Hashable {
-    var id: String { asset }
+    var id: String { asset + tradingMode.rawValue }
 
     let asset: String
     let totalQuantity: Double

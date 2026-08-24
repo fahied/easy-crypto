@@ -113,8 +113,8 @@ struct AssetDiscoveryTests {
         #expect(!symbols.contains("USDTUSDT"))
     }
 
-    @Test("When account is empty, then bootstrap symbols are still requested")
-    func bootstrapSymbolsAreFetchedOnFreshSync() async throws {
+    @Test("When account is empty, static list symbols are still requested")
+    func staticListSymbolsFetchedOnFreshSync() async throws {
         let client = makeClient(
             balances: [],
             tradesForSymbol: { symbol, _ in
@@ -127,12 +127,12 @@ struct AssetDiscoveryTests {
         let symbols = Set(result.mappedTrades.map(\.symbol))
         #expect(symbols.contains("BTCUSDT"))
         #expect(symbols.contains("SOLUSDT"))
-        #expect(symbols.contains("IOTXUSDT"))
         #expect(symbols.contains("BNBUSDT"))
+        #expect(symbols.contains("ETHUSDT"))
     }
 
-    @Test("When account has ETH, then bootstrap symbols are added to the sync set")
-    func addsBootstrapSymbolsToBalanceAssets() async throws {
+    @Test("When account has ETH, static list symbols are also synced")
+    func staticListSymbolsAddedToBalanceAssets() async throws {
         let client = makeClient(
             balances: [makeBalance("ETH")],
             tradesForSymbol: { symbol, _ in
@@ -146,10 +146,162 @@ struct AssetDiscoveryTests {
         #expect(symbols.contains("ETHUSDT"))
         #expect(symbols.contains("BTCUSDT"))
         #expect(symbols.contains("SOLUSDT"))
-        #expect(symbols.contains("IOTXUSDT"))
         #expect(symbols.contains("BNBUSDT"))
+        #expect(symbols.contains("XRPUSDT"))
     }
 
+}
+
+// MARK: - Static Asset List Tests
+
+@Suite("Given a trade import service with a static asset list")
+struct StaticAssetListTests {
+
+    @Test("When account balance is empty, all static list symbols are still synced")
+    func syncsAllStaticListSymbolsWithEmptyBalance() async throws {
+        let client = makeClient(
+            balances: [],
+            tradesForSymbol: { symbol, _ in
+                [makeBinanceTrade(id: 1, symbol: symbol)]
+            }
+        )
+        let service = TradeImportService.live(apiClient: client)
+        let result = try await service.sync([:])
+
+        let symbols = Set(result.mappedTrades.map(\.symbol))
+        // All 17 static list symbols should be fetched even with zero balance
+        for asset in TradeImportService.knownAssets {
+            #expect(symbols.contains("\(asset)USDT"), "\(asset)USDT should be synced from static list")
+        }
+    }
+
+    @Test("When account has some balances, static list symbols without balance are still synced")
+    func syncsStaticListSymbolsWithoutBalance() async throws {
+        let client = makeClient(
+            balances: [makeBalance("ETH")],  // only ETH has a balance
+            tradesForSymbol: { symbol, _ in
+                [makeBinanceTrade(id: 1, symbol: symbol)]
+            }
+        )
+        let service = TradeImportService.live(apiClient: client)
+        let result = try await service.sync([:])
+
+        let symbols = Set(result.mappedTrades.map(\.symbol))
+        // ETH comes from balance, BTC comes from static list despite zero balance
+        #expect(symbols.contains("ETHUSDT"), "ETH should be synced from balance")
+        #expect(symbols.contains("BTCUSDT"), "BTC should be synced from static list")
+        #expect(symbols.contains("SOLUSDT"), "SOL should be synced from static list")
+        #expect(symbols.contains("BNBUSDT"), "BNB should be synced from static list")
+    }
+
+    @Test("When balance has an asset not in static list, it is still synced")
+    func syncsBalanceDiscoveredAssetsOutsideStaticList() async throws {
+        let client = makeClient(
+            balances: [makeBalance("PEPE")],  // PEPE is NOT in the static list
+            tradesForSymbol: { symbol, _ in
+                [makeBinanceTrade(id: 1, symbol: symbol)]
+            }
+        )
+        let service = TradeImportService.live(apiClient: client)
+        let result = try await service.sync([:])
+
+        let symbols = Set(result.mappedTrades.map(\.symbol))
+        #expect(symbols.contains("PEPEUSDT"), "PEPE should be synced from balance discovery")
+    }
+
+    @Test("When existingSync has symbols outside static list, they are still synced")
+    func syncsExistingSyncSymbolsOutsideStaticList() async throws {
+        let client = makeClient(
+            balances: [],
+            tradesForSymbol: { symbol, _ in
+                [makeBinanceTrade(id: 1, symbol: symbol)]
+            }
+        )
+        let service = TradeImportService.live(apiClient: client)
+        let result = try await service.sync(["DOGEUSDT": 500])
+
+        let symbols = Set(result.mappedTrades.map(\.symbol))
+        #expect(symbols.contains("DOGEUSDT"), "DOGE should be synced from existingSync")
+    }
+
+    @Test("When all three sources overlap, no duplicates are fetched")
+    func noDuplicatesWhenSourcesOverlap() async throws {
+        var fetchCounts: [String: Int] = [:]
+        let client = makeClient(
+            balances: [makeBalance("BTC")],
+            tradesForSymbol: { symbol, _ in
+                fetchCounts[symbol, default: 0] += 1
+                return [makeBinanceTrade(id: 1, symbol: symbol)]
+            }
+        )
+        let service = TradeImportService.live(apiClient: client)
+        let result = try await service.sync(["BTCUSDT": 500])
+
+        // BTC is in static list, balance, and existingSync — should be fetched exactly once
+        let btcTrades = result.mappedTrades.filter { $0.symbol == "BTCUSDT" }
+        #expect(btcTrades.count == 1, "BTCUSDT should appear exactly once")
+    }
+
+    @Test("When account is empty and existingSync is empty, static list still syncs")
+    func staticListActsAsBootstrapWhenEverythingElseIsEmpty() async throws {
+        let client = makeClient(
+            balances: [],
+            tradesForSymbol: { symbol, _ in
+                [makeBinanceTrade(id: 1, symbol: symbol)]
+            }
+        )
+        let service = TradeImportService.live(apiClient: client)
+        let result = try await service.sync([:])
+
+        let symbols = Set(result.mappedTrades.map(\.symbol))
+        #expect(symbols.count == TradeImportService.knownAssets.count,
+            "All \(TradeImportService.knownAssets.count) static assets should be synced")
+    }
+
+    @Test("When USDT is in balance, it is excluded from sync")
+    func excludesUSDTFromSync() async throws {
+        let client = makeClient(
+            balances: [makeBalance("BTC"), makeBalance("USDT")],
+            tradesForSymbol: { symbol, _ in
+                [makeBinanceTrade(id: 1, symbol: symbol)]
+            }
+        )
+        let service = TradeImportService.live(apiClient: client)
+        let result = try await service.sync([:])
+
+        let symbols = Set(result.mappedTrades.map(\.symbol))
+        #expect(!symbols.contains("USDTUSDT"), "USDT should not be synced")
+        #expect(symbols.contains("BTCUSDT"), "BTC should be synced from static list")
+    }
+
+    @Test("Static list uses fromId cursor from existingSync")
+    func staticListRespectsFromIdCursor() async throws {
+        let client = makeClient(
+            balances: [],
+            tradesForSymbol: { symbol, fromId in
+                if symbol == "BTCUSDT" {
+                    #expect(fromId == 501, "BTC fromId should be lastTradeId + 1")
+                    return [makeBinanceTrade(id: 501, symbol: symbol)]
+                }
+                return []
+            }
+        )
+        let service = TradeImportService.live(apiClient: client)
+        _ = try await service.sync(["BTCUSDT": 500])
+    }
+
+    @Test("Static list symbol with no new trades returns empty and no sync update")
+    func staticListSymbolWithNoNewTrades() async throws {
+        let client = makeClient(
+            balances: [],
+            tradesForSymbol: { _, _ in [] }
+        )
+        let service = TradeImportService.live(apiClient: client)
+        let result = try await service.sync([:])
+
+        #expect(result.mappedTrades.isEmpty)
+        #expect(result.syncUpdates.isEmpty)
+    }
 }
 
 // MARK: - Trade Mapping Tests
@@ -516,7 +668,7 @@ struct RateLimitRetryTests {
         let client = BinanceAPIClient(
             fetchAccount: { [makeBalance("BTC")] },
             fetchMyTrades: { symbol, _ in
-                // Only BTCUSDT is under test; bootstrap-tracked assets (SOL/IOTX/BNB)
+                // Only BTCUSDT is under test; static-list assets (SOL/BNB/ETH)
                 // are also synced but have no trades here.
                 guard symbol == "BTCUSDT" else { return [] }
                 callCount.value += 1

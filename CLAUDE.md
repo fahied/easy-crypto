@@ -1,3 +1,11 @@
+# EasyCrypto Project Rules
+
+## Build & Test Operations
+
+Always use **XcodeBuildMCP** (`mcp__XcodeBuildMCP__*` tools) for build, test, and simulator operations. Do not use `xcodebuild` via Bash or shell commands — use the MCP tools instead. Fall back to Bash only when MCP tools are unavailable.
+
+---
+
 # ARRIVE Core
 
 Governance for Claude Code sessions in this repo. Edit `arrive/agent-rules/core.md` and run `arrive sync agent-rules`.

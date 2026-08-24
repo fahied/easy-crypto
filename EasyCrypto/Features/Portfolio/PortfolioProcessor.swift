@@ -52,15 +52,15 @@ class PortfolioProcessor: Processor {
 
     // MARK: - Load from Persisted Data
 
-    /// Builds the portfolio summary from SwiftData only — no exchange sync.
+    /// Builds the portfolio summary from SwiftData trades (not balances) — balances
+    /// come from the live API via `marginBalanceService` to avoid stale data.
     /// Used on launch to show cached data immediately.
     private func loadPersistedData() async {
         state.isLoading = true
         state.error = nil
 
         do {
-            let spotBalances = fetchPersistedSpotBalances()
-            state.summary = try await computeSummary(persistedSpotBalances: spotBalances)
+            state.summary = try await computeSummary()
             state.lastRefreshDate = Date()
         } catch {
             state.error = error.localizedDescription
@@ -110,10 +110,8 @@ class PortfolioProcessor: Processor {
 
     // MARK: - Summary Computation
 
-    private func computeSummary(
-        persistedSpotBalances: [String: Double]? = nil
-    ) async throws -> PortfolioSummary {
-        let spotHoldings = try await computeSpotHoldings(persistedBalances: persistedSpotBalances)
+    private func computeSummary() async throws -> PortfolioSummary {
+        let spotHoldings = try await computeSpotHoldings()
         let crossHoldings = try await computeCrossMarginHoldings()
         let isolatedHoldings = try await computeIsolatedMarginHoldings()
 
@@ -173,17 +171,10 @@ class PortfolioProcessor: Processor {
 
     // MARK: - Spot Holdings
 
-    private func computeSpotHoldings(
-        persistedBalances: [String: Double]? = nil
-    ) async throws -> [Holding] {
+    private func computeSpotHoldings() async throws -> [Holding] {
         let allTrades = (try? fetchTrades(mode: .spot)) ?? []
 
-        let balances: [String: Double]
-        if let persisted = persistedBalances {
-            balances = persisted
-        } else {
-            balances = try await balanceService.fetchBalances()
-        }
+        let balances = try await balanceService.fetchBalances()
         guard !allTrades.isEmpty || !balances.isEmpty else { return [] }
 
         let tradesByAsset = Dictionary(grouping: allTrades.map(Self.toFIFOTrade)) { $0.asset }
@@ -224,8 +215,7 @@ class PortfolioProcessor: Processor {
     private func computeCrossMarginHoldings() async throws -> [Holding] {
         let allTrades = (try? fetchTrades(mode: .crossMargin)) ?? []
 
-        let descriptor = FetchDescriptor<CrossMarginBalance>()
-        let crossBalances: [CrossMarginBalance] = (try? modelContext.fetch(descriptor)) ?? []
+        let crossBalances = (try? await marginBalanceService.fetchCrossMarginBalances()) ?? []
         guard !allTrades.isEmpty || !crossBalances.isEmpty else { return [] }
 
         let tradesByAsset = Dictionary(grouping: allTrades.map(Self.toFIFOTrade)) { $0.asset }
@@ -271,15 +261,14 @@ class PortfolioProcessor: Processor {
     private func computeIsolatedMarginHoldings() async throws -> [Holding] {
         let trades = (try? fetchTrades(mode: .isolatedMargin)) ?? []
 
-        let descriptor = FetchDescriptor<MarginBalance>()
-        let marginBalances: [MarginBalance] = (try? modelContext.fetch(descriptor)) ?? []
-        guard !trades.isEmpty || !marginBalances.isEmpty else { return [] }
+        let isolatedBalances = (try? await marginBalanceService.fetchAllIsolatedMarginBalances()) ?? []
+        guard !trades.isEmpty || !isolatedBalances.isEmpty else { return [] }
 
         let tradesByAsset = Dictionary(grouping: trades.map(Self.toFIFOTrade)) { $0.asset }
         // An asset appears once per pair it trades in, so sum rather than pick one row.
-        let netAssetByAsset = Dictionary(marginBalances.map { ($0.asset, $0.netAsset) }, uniquingKeysWith: +)
-        let interestByAsset = Dictionary(marginBalances.map { ($0.asset, $0.interest) }, uniquingKeysWith: +)
-        let borrowedByAsset = Dictionary(marginBalances.map { ($0.asset, $0.borrowed) }, uniquingKeysWith: +)
+        let netAssetByAsset = Dictionary(isolatedBalances.map { ($0.asset, $0.netAsset) }, uniquingKeysWith: +)
+        let interestByAsset = Dictionary(isolatedBalances.map { ($0.asset, $0.interest) }, uniquingKeysWith: +)
+        let borrowedByAsset = Dictionary(isolatedBalances.map { ($0.asset, $0.borrowed) }, uniquingKeysWith: +)
 
         let assets = Set(tradesByAsset.keys).union(netAssetByAsset.keys)
         let prices = try await fetchPrices(for: Array(assets))
@@ -344,15 +333,6 @@ class PortfolioProcessor: Processor {
         let predicate = #Predicate<Trade> { $0.tradingMode == mode.rawValue }
         var descriptor = FetchDescriptor<Trade>(predicate: predicate, sortBy: [SortDescriptor(\.binanceTradeId)])
         return try modelContext.fetch(descriptor)
-    }
-
-    private func fetchPersistedSpotBalances() -> [String: Double] {
-        let descriptor = FetchDescriptor<AccountBalance>()
-        guard let balances = try? modelContext.fetch(descriptor) else { return [:] }
-        return Dictionary(
-            balances.map { ($0.asset, $0.quantity) },
-            uniquingKeysWith: { first, _ in first }
-        )
     }
 
     private func sortHoldings(_ holdings: [Holding]) -> [Holding] {

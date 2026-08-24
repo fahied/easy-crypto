@@ -102,12 +102,14 @@ extension MarginBalanceService {
                         IsolatedMarginBalance.from(
                             assetDetail: pair.baseAsset,
                             symbol: pair.symbol,
+                            role: .base,
                             liquidationPrice: pair.liquidatePrice,
                             marginLevel: pair.marginLevel
                         ),
                         IsolatedMarginBalance.from(
                             assetDetail: pair.quoteAsset,
                             symbol: pair.symbol,
+                            role: .quote,
                             liquidationPrice: pair.liquidatePrice,
                             marginLevel: pair.marginLevel
                         ),
@@ -122,14 +124,22 @@ extension MarginBalanceService {
                 // account has created, which is the only way to discover them.
                 let isolatedAccount = try await apiClient.fetchIsolatedMarginAccount([])
                 let balances = isolatedAccount.assets.flatMap { pair in
-                    [pair.baseAsset, pair.quoteAsset].map { detail in
+                    [
                         IsolatedMarginBalance.from(
-                            assetDetail: detail,
+                            assetDetail: pair.baseAsset,
                             symbol: pair.symbol,
+                            role: .base,
                             liquidationPrice: pair.liquidatePrice,
                             marginLevel: pair.marginLevel
-                        )
-                    }
+                        ),
+                        IsolatedMarginBalance.from(
+                            assetDetail: pair.quoteAsset,
+                            symbol: pair.symbol,
+                            role: .quote,
+                            liquidationPrice: pair.liquidatePrice,
+                            marginLevel: pair.marginLevel
+                        ),
+                    ]
                 }
                 logger.info("Fetched \(balances.count) isolated-margin balances across \(isolatedAccount.assets.count) pairs")
                 return balances
@@ -167,6 +177,7 @@ extension MarginBalanceService {
                 IsolatedMarginBalance(
                     symbol: symbol,
                     asset: "BTC",
+                    role: .base,
                     borrowed: 0.5,
                     free: 0.2,
                     locked: 0.1,
@@ -177,6 +188,7 @@ extension MarginBalanceService {
                 IsolatedMarginBalance(
                     symbol: symbol,
                     asset: "USDT",
+                    role: .quote,
                     borrowed: 10000,
                     free: 500,
                     locked: 0,
@@ -189,6 +201,7 @@ extension MarginBalanceService {
                 IsolatedMarginBalance(
                     symbol: "BTCUSDT",
                     asset: "BTC",
+                    role: .base,
                     borrowed: 0.5,
                     free: 0.2,
                     locked: 0.1,
@@ -199,6 +212,7 @@ extension MarginBalanceService {
                 IsolatedMarginBalance(
                     symbol: "BTCUSDT",
                     asset: "USDT",
+                    role: .quote,
                     borrowed: 10000,
                     free: 500,
                     locked: 0,

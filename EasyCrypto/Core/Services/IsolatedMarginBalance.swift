@@ -11,25 +11,28 @@ import Foundation
 // MARK: - Isolated Margin Balance
 
 nonisolated struct IsolatedMarginBalance: Sendable, Identifiable {
-    /// The isolated trading pair symbol (e.g. "BTCUSDT").
+    enum Role: String, Sendable {
+        case base
+        case quote
+    }
+
     let symbol: String
-    /// The individual asset within the pair (e.g. "BTC" or "USDT").
     let asset: String
+    let role: Role
     let borrowed: Double
     let free: Double
     let locked: Double
     let interest: Double
     let netAsset: Double
-    /// Liquidation price for the pair — sourced from `fetchIsolatedMarginAccount`.
     let liquidationPrice: String
-    /// Margin level for the pair — sourced from `fetchIsolatedMarginAccount`.
     let marginLevel: String
 
-    var id: String { "\(symbol):\(asset)" }
+    var id: String { "\(symbol):\(asset):\(role.rawValue)" }
 
     init(
         symbol: String,
         asset: String,
+        role: Role,
         borrowed: Double = 0,
         free: Double = 0,
         locked: Double = 0,
@@ -40,6 +43,7 @@ nonisolated struct IsolatedMarginBalance: Sendable, Identifiable {
     ) {
         self.symbol = symbol
         self.asset = asset
+        self.role = role
         self.borrowed = borrowed
         self.free = free
         self.locked = locked
@@ -54,12 +58,14 @@ nonisolated struct IsolatedMarginBalance: Sendable, Identifiable {
     static func from(
         assetDetail: BinanceIsolatedMarginAccount.AssetDetail,
         symbol: String,
+        role: Role,
         liquidationPrice: String = "",
         marginLevel: String = ""
     ) -> IsolatedMarginBalance {
         IsolatedMarginBalance(
             symbol: symbol,
             asset: assetDetail.asset,
+            role: role,
             borrowed: Double(assetDetail.borrowed) ?? 0,
             free: Double(assetDetail.free) ?? 0,
             locked: Double(assetDetail.locked) ?? 0,

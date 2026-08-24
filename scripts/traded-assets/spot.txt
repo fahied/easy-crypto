@@ -1,0 +1,5 @@
+BANK
+BNB
+DEXE
+MMT
+XRP

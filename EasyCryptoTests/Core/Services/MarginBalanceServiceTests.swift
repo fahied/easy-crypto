@@ -91,12 +91,14 @@ struct MarginBalanceServiceTests {
         let balance = IsolatedMarginBalance.from(
             assetDetail: assetDetail,
             symbol: "BTCUSDT",
+            role: .base,
             liquidationPrice: "42000",
             marginLevel: "2.1"
         )
 
         #expect(balance.symbol == "BTCUSDT")
         #expect(balance.asset == "BTC")
+        #expect(balance.role == .base)
         #expect(abs(balance.borrowed - 0.5) < 1e-9)
         #expect(abs(balance.free - 0.2) < 1e-9)
         #expect(abs(balance.interest - 0.01) < 1e-9)
@@ -118,10 +120,12 @@ struct MarginBalanceServiceTests {
 
         let balance = IsolatedMarginBalance.from(
             assetDetail: assetDetail,
-            symbol: "BTCUSDT"
+            symbol: "BTCUSDT",
+            role: .quote
         )
 
         #expect(balance.asset == "USDT")
+        #expect(balance.role == .quote)
         #expect(balance.liquidationPrice.isEmpty)
         #expect(balance.marginLevel.isEmpty)
         #expect(abs(balance.netAsset - 5000) < 1e-9)
@@ -266,12 +270,14 @@ struct MarginBalanceServiceTests {
 
         let btc = result!.first { $0.asset == "BTC" }
         #expect(btc != nil)
+        #expect(btc!.role == .base)
         #expect(abs(btc!.borrowed - 0.5) < 1e-9)
         #expect(btc!.liquidationPrice == "30000")
         #expect(btc!.marginLevel == "2.5")
 
         let usdt = result!.first { $0.asset == "USDT" }
         #expect(usdt != nil)
+        #expect(usdt!.role == .quote)
         #expect(abs(usdt!.netAsset - 5000) < 1e-9)
         #expect(usdt!.liquidationPrice == "30000")
         #expect(usdt!.marginLevel == "2.5")

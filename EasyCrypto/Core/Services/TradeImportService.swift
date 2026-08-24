@@ -42,8 +42,20 @@ nonisolated struct TradeImportResult: Sendable {
 
 nonisolated struct TradeImportService: Sendable {
     /// Performs full trade sync: discovers assets, fetches trades with pagination.
-    /// `existingSync` maps symbol (e.g. "BTCUSDT") → lastTradeId for incremental sync.
+    /// `existingSync` maps symbol (e.g. "BTCUSDT") -> lastTradeId for incremental sync.
     var sync: @Sendable (_ existingSync: [String: Int64]) async throws -> TradeImportResult
+}
+
+// MARK: - Static Asset List
+
+extension TradeImportService {
+    /// Assets the user actively trades. Always included in sync regardless of
+    /// current balance — closed positions need their trade history preserved.
+    nonisolated static let knownAssets: [String] = [
+        "ADA", "ALLO", "BANK", "BCH", "BNB", "BTC", "DEXE", "ETH",
+        "HYPER", "IOTA", "LTC", "MET", "MMT", "NEAR", "SENT",
+        "SOL", "TRX", "XRP"
+    ]
 }
 
 // MARK: - Live Implementation
@@ -59,29 +71,33 @@ extension TradeImportService {
     /// Maximum retries per symbol when a 429 rate-limit response is received.
     nonisolated private static let maxRateLimitRetries = 3
 
-    static func live(apiClient: BinanceAPIClient) -> TradeImportService {
+    static func live(
+        apiClient: BinanceAPIClient
+    ) -> TradeImportService {
         TradeImportService(
             sync: { existingSync in
-                // 1. Discover assets from account
                 let balances = try await apiClient.fetchAccount()
                 let previouslySyncedAssets = existingSync.keys
                     .filter { $0.hasSuffix("USDT") }
                     .map { String($0.dropLast(4)) }
 
-                // Assets we've traded before are always included; balance-only assets
-                // must clear a minimum threshold to avoid fetching dust positions.
-                let knownAssets = Set(previouslySyncedAssets)
                 let balanceThreshold: Double = 0.000001
-                let newBalanceAssets = balances
-                    .filter { $0.asset != "USDT" }
-                    .compactMap { balance in
-                        let free = Double(balance.free) ?? 0
-                        let locked = Double(balance.locked) ?? 0
-                        return free + locked > balanceThreshold ? balance.asset : nil
-                    }
+                let balanceDiscoveredAssets = Set(
+                    balances
+                        .filter { $0.asset != "USDT" }
+                        .compactMap { balance in
+                            let free = Double(balance.free) ?? 0
+                            let locked = Double(balance.locked) ?? 0
+                            return free + locked > balanceThreshold ? balance.asset : nil
+                        }
+                )
+
+                // Static list is always included — closed positions must stay synced.
+                let staticAssets = Set(Self.knownAssets)
+                let knownAssets = Set(previouslySyncedAssets)
 
                 let assets = Array(
-                    Set(knownAssets + newBalanceAssets)
+                    staticAssets.union(balanceDiscoveredAssets).union(knownAssets)
                 )
                 .sorted()
 
@@ -95,7 +111,6 @@ extension TradeImportService {
                 var allTrades: [MappedTrade] = []
                 var syncUpdates: [SyncUpdate] = []
 
-                // 2. For each asset, fetch trades with pagination and retry on rate limits
                 for (index, asset) in assets.enumerated() {
                     let symbol = "\(asset)USDT"
                     let lastTradeId = existingSync[symbol]
@@ -108,7 +123,6 @@ extension TradeImportService {
                             fromId: startFromId
                         )
 
-                        // Map API responses to domain objects
                         let mapped = assetTrades.map { trade in
                             MappedTrade(
                                 binanceTradeId: trade.id,
@@ -126,7 +140,6 @@ extension TradeImportService {
                         }
                         allTrades.append(contentsOf: mapped)
 
-                        // Update sync metadata
                         if let lastTrade = assetTrades.last {
                             syncUpdates.append(SyncUpdate(
                                 symbol: symbol,
@@ -141,8 +154,6 @@ extension TradeImportService {
                         continue
                     }
 
-                    // Small delay between symbols to stay within weight limits,
-                    // but not after the last one.
                     if index < assets.count - 1 {
                         try? await Task.sleep(for: interRequestDelay)
                     }
@@ -156,7 +167,6 @@ extension TradeImportService {
         )
     }
 
-    /// Fetches all trades for a symbol with automatic pagination and rate-limit retry.
     private static func fetchTradesWithRetry(
         apiClient: BinanceAPIClient,
         symbol: String,
@@ -186,10 +196,8 @@ extension TradeImportService {
                         throw error
                     }
                 case .invalidCredentials, .noCredentialsConfigured:
-                    // Don't retry auth errors — they won't self-resolve
                     throw error
                 default:
-                    // Other errors (network, decoding, apiError) — retry once with backoff
                     if attempt < maxRateLimitRetries - 1 {
                         let backoff = [500, 1500, 3000][min(attempt, 2)]
                         logger.warning(
@@ -201,7 +209,6 @@ extension TradeImportService {
                     }
                 }
             } catch {
-                // Non-Binance errors — retry once then give up
                 if attempt < maxRateLimitRetries - 1 {
                     try? await Task.sleep(for: .milliseconds(500))
                 } else {
@@ -209,11 +216,9 @@ extension TradeImportService {
                 }
             }
         }
-        // Unreachable — loop always throws or returns
         return []
     }
 
-    /// Fetches all trades for a single symbol with automatic pagination.
     private static func fetchTradesWithPagination(
         apiClient: BinanceAPIClient,
         symbol: String,
