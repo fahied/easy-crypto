@@ -47,6 +47,8 @@ class PortfolioProcessor: Processor {
             await loadPersistedData()
         case .sortHoldings(let by):
             state.sortBy = by
+        case .showInvestedAssets:
+            await handleShowInvestedAssets()
         }
     }
 
@@ -111,13 +113,8 @@ class PortfolioProcessor: Processor {
     // MARK: - Summary Computation
 
     private func computeSummary() async throws -> PortfolioSummary {
-        let spotHoldings = try await computeSpotHoldings()
-        let crossHoldings = try await computeCrossMarginHoldings()
-        let isolatedHoldings = try await computeIsolatedMarginHoldings()
+        let (spotHoldings, crossHoldings, isolatedHoldings) = try await computeAllHoldings()
 
-        // Realized P&L is derived from the full trade history, not from the surviving
-        // holdings: a position that was bought and sold in full has no holding left but
-        // its profit still counts.
         let spotRealized = realizedPnL(mode: .spot)
         let crossRealized = realizedPnL(mode: .crossMargin)
         let isolatedRealized = realizedPnL(mode: .isolatedMargin)
@@ -167,6 +164,53 @@ class PortfolioProcessor: Processor {
                 holdingsCount: isolatedSummary.holdingsCount
             )
         )
+    }
+
+    /// Computes all three mode's holdings in parallel. Shared between summary
+    /// computation and the invested-assets detail view.
+    private func computeAllHoldings() async throws -> (spot: [Holding], cross: [Holding], isolated: [Holding]) {
+        async let spot = computeSpotHoldings()
+        async let cross = computeCrossMarginHoldings()
+        async let isolated = computeIsolatedMarginHoldings()
+
+        let spotResult = try await spot
+        let crossResult = try await cross
+        let isolatedResult = try await isolated
+
+        return (spotResult, crossResult, isolatedResult)
+    }
+
+    // MARK: - Invested Assets Detail
+
+    private func handleShowInvestedAssets() async {
+        state.investedAssetsDestination = nil
+
+        do {
+            let (spot, cross, isolated) = try await computeAllHoldings()
+
+            let rows: [InvestedAssetRow] = (spot + cross + isolated)
+                .filter { $0.totalInvestedUSDT > 0 }
+                .map { holding in
+                    InvestedAssetRow(
+                        asset: holding.asset,
+                        tradingMode: holding.tradingMode,
+                        amountInvestedUSDT: holding.totalInvestedUSDT,
+                        currentValueUSDT: holding.currentValueUSDT
+                    )
+                }
+                .sorted { $0.amountInvestedUSDT > $1.amountInvestedUSDT }
+
+            let totalInvested = rows.reduce(0.0) { $0 + $1.amountInvestedUSDT }
+            let totalCurrent = rows.reduce(0.0) { $0 + $1.currentValueUSDT }
+
+            state.investedAssetsDestination = InvestedAssetsDestination(
+                assets: rows,
+                totalInvested: totalInvested,
+                totalCurrentValue: totalCurrent
+            )
+        } catch {
+            state.error = error.localizedDescription
+        }
     }
 
     // MARK: - Spot Holdings

@@ -9,6 +9,9 @@ import SwiftData
 struct PortfolioView: View {
     @State var processor: PortfolioProcessor
 
+    @State private var investedAssetsRoute = false
+    @State private var investedAssetsSnapshot: InvestedAssetsDestination?
+
     private var state: PortfolioState { processor.state }
 
     var body: some View {
@@ -25,6 +28,17 @@ struct PortfolioView: View {
                 }
             }
             .navigationTitle("Portfolio")
+            .navigationDestination(isPresented: $investedAssetsRoute) {
+                if let destination = investedAssetsSnapshot {
+                    InvestedAssetsView(destination: destination)
+                }
+            }
+            .onChange(of: state.investedAssetsDestination) { _, newValue in
+                if let destination = newValue {
+                    investedAssetsSnapshot = destination
+                    investedAssetsRoute = true
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -78,11 +92,23 @@ struct PortfolioView: View {
                        GridItem(.flexible(), spacing: Theme.cardSpacing)],
             spacing: Theme.cardSpacing
         ) {
-            MetricCard(
-                label: "Total Invested",
-                value: summary.totalInvestedUSDT.usdtFormatted,
-                subtitle: "\(summary.holdingsCount) asset\(summary.holdingsCount == 1 ? "" : "s")"
-            )
+            Button {
+                Task { @MainActor in
+                    await processor.handle(.showInvestedAssets)
+                }
+            } label: {
+                MetricCard(
+                    label: "Total Invested",
+                    value: summary.totalInvestedUSDT.usdtFormatted,
+                    subtitle: "\(summary.holdingsCount) asset\(summary.holdingsCount == 1 ? "" : "s")"
+                )
+                .overlay(alignment: .topTrailing) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.tertiary)
+                        .padding(8)
+                }
+            }
 
             MetricCard(
                 label: "Current Value",

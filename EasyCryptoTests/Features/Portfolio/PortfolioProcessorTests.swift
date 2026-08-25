@@ -662,3 +662,326 @@ struct PortfolioMarginModeTests {
         #expect(processor.state.summary.isolatedMargin.currentValueUSDT == 6500.0)
     }
 }
+
+// MARK: - Invested Assets Detail
+
+@Suite("Given a PortfolioProcessor handling showInvestedAssets")
+struct PortfolioInvestedAssetsTests {
+
+    @Test("When total invested is tapped with spot + margin holdings, then all invested assets are listed")
+    func showInvestedAssetsListsAllModes() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+
+        // Spot: BTC bought at 50k
+        context.insert(Trade(
+            binanceTradeId: 1, symbol: "BTCUSDT", asset: "BTC",
+            price: 50000, quantity: 1.0, quoteQuantity: 50000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+            isBuyer: true, orderId: 100,
+            tradingMode: .spot
+        ))
+        // Cross margin: ETH bought at 3k
+        context.insert(Trade(
+            binanceTradeId: 2, symbol: "ETHUSDT", asset: "ETH",
+            price: 3000, quantity: 5.0, quoteQuantity: 15000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_100_000),
+            isBuyer: true, orderId: 101,
+            tradingMode: .crossMargin
+        ))
+        // Isolated margin: SOL bought at 100
+        context.insert(Trade(
+            binanceTradeId: 3, symbol: "SOLUSDT", asset: "SOL",
+            price: 100, quantity: 50.0, quoteQuantity: 5000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_200_000),
+            isBuyer: true, orderId: 102,
+            tradingMode: .isolatedMargin
+        ))
+        try context.save()
+
+        let processor = try makeProcessor(
+            tradeImportService: .noop,
+            priceService: PriceService(fetchPrices: { _ in
+                ["BTCUSDT": 65000.0, "ETHUSDT": 3500.0, "SOLUSDT": 150.0]
+            }),
+            modelContainer: container,
+            balanceService: BalanceService(fetchBalances: { ["BTC": 1.0, "ETH": 5.0, "SOL": 50.0] }),
+            marginBalanceService: MarginBalanceService(
+                fetchCrossMarginAccount: { nil },
+                fetchCrossMarginBalances: {
+                    [CrossMarginBalance(asset: "ETH", borrowed: 0, free: 0, locked: 0, netAsset: 5.0, interest: 0)]
+                },
+                fetchIsolatedMarginBalances: { _ in nil },
+                fetchAllIsolatedMarginBalances: {
+                    [
+                        IsolatedMarginBalance(
+                            symbol: "SOLUSDT", asset: "SOL", role: .base,
+                            borrowed: 0, free: 0, locked: 0, interest: 0, netAsset: 50.0
+                        ),
+                    ]
+                }
+            )
+        )
+
+        await processor.handle(.showInvestedAssets)
+
+        let destination = try #require(processor.state.investedAssetsDestination)
+        #expect(destination.assets.count == 3)
+        // Spot BTC 50000 + Cross ETH 15000 + Isolated SOL 5000
+        #expect(destination.totalInvested == 70000.0)
+        // Spot BTC 65000 + Cross ETH 17500 + Isolated SOL 7500
+        #expect(destination.totalCurrentValue == 90000.0)
+        // Verify per-mode breakdown
+        let btc = try #require(destination.assets.first { $0.asset == "BTC" })
+        #expect(btc.tradingMode == .spot)
+        #expect(btc.amountInvestedUSDT == 50000.0)
+        let eth = try #require(destination.assets.first { $0.asset == "ETH" })
+        #expect(eth.tradingMode == .crossMargin)
+        #expect(eth.amountInvestedUSDT == 15000.0)
+        let sol = try #require(destination.assets.first { $0.asset == "SOL" })
+        #expect(sol.tradingMode == .isolatedMargin)
+        #expect(sol.amountInvestedUSDT == 5000.0)
+    }
+
+    @Test("When no holdings exist, then invested assets destination is empty")
+    func showInvestedAssetsEmpty() async throws {
+        let processor = try makeProcessor(
+            tradeImportService: .noop,
+            priceService: PriceService(fetchPrices: { _ in [:] }),
+            modelContainer: try makeContainer()
+        )
+
+        await processor.handle(.showInvestedAssets)
+
+        let destination = processor.state.investedAssetsDestination
+        #expect(destination == nil || destination?.assets.isEmpty == true)
+    }
+
+    @Test("When a position is fully sold, then it is excluded from invested assets")
+    func soldPositionExcluded() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+
+        // BTC bought then fully sold
+        context.insert(Trade(
+            binanceTradeId: 1, symbol: "BTCUSDT", asset: "BTC",
+            price: 50000, quantity: 1.0, quoteQuantity: 50000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+            isBuyer: true, orderId: 100,
+            tradingMode: .spot
+        ))
+        context.insert(Trade(
+            binanceTradeId: 2, symbol: "BTCUSDT", asset: "BTC",
+            price: 60000, quantity: 1.0, quoteQuantity: 60000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_100_000),
+            isBuyer: false, orderId: 101,
+            tradingMode: .spot
+        ))
+        // ETH still held
+        context.insert(Trade(
+            binanceTradeId: 3, symbol: "ETHUSDT", asset: "ETH",
+            price: 3000, quantity: 5.0, quoteQuantity: 15000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_200_000),
+            isBuyer: true, orderId: 102,
+            tradingMode: .spot
+        ))
+        try context.save()
+
+        let processor = try makeProcessor(
+            tradeImportService: .noop,
+            priceService: PriceService(fetchPrices: { _ in ["ETHUSDT": 3500.0] }),
+            modelContainer: container,
+            balanceService: BalanceService(fetchBalances: { ["ETH": 5.0] })
+        )
+
+        await processor.handle(.showInvestedAssets)
+
+        let destination = try #require(processor.state.investedAssetsDestination)
+        #expect(destination.assets.count == 1)
+        #expect(destination.assets.first?.asset == "ETH")
+        #expect(destination.assets.first?.tradingMode == .spot)
+        #expect(destination.assets.first?.amountInvestedUSDT == 15000.0)
+    }
+
+    @Test("When the same asset exists in spot and cross margin, then both rows appear")
+    func sameAssetAcrossModesAppearsTwice() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+
+        // BTC spot: bought at 50k
+        context.insert(Trade(
+            binanceTradeId: 1, symbol: "BTCUSDT", asset: "BTC",
+            price: 50000, quantity: 1.0, quoteQuantity: 50000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+            isBuyer: true, orderId: 100,
+            tradingMode: .spot
+        ))
+        // BTC cross margin: bought at 40k
+        context.insert(Trade(
+            binanceTradeId: 2, symbol: "BTCUSDT", asset: "BTC",
+            price: 40000, quantity: 0.5, quoteQuantity: 20000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_100_000),
+            isBuyer: true, orderId: 101,
+            tradingMode: .crossMargin
+        ))
+        try context.save()
+
+        let processor = try makeProcessor(
+            tradeImportService: .noop,
+            priceService: PriceService(fetchPrices: { _ in ["BTCUSDT": 65000.0] }),
+            modelContainer: container,
+            balanceService: BalanceService(fetchBalances: { ["BTC": 1.0] }),
+            marginBalanceService: MarginBalanceService(
+                fetchCrossMarginAccount: { nil },
+                fetchCrossMarginBalances: {
+                    [CrossMarginBalance(asset: "BTC", borrowed: 0, free: 0, locked: 0, netAsset: 0.5, interest: 0)]
+                },
+                fetchIsolatedMarginBalances: { _ in nil },
+                fetchAllIsolatedMarginBalances: { [] }
+            )
+        )
+
+        await processor.handle(.showInvestedAssets)
+
+        let destination = try #require(processor.state.investedAssetsDestination)
+        #expect(destination.assets.count == 2)
+        let modes = Set(destination.assets.map(\.tradingMode))
+        #expect(modes == [.spot, .crossMargin])
+        let btcRows = destination.assets.filter { $0.asset == "BTC" }
+        #expect(btcRows.count == 2)
+        #expect(btcRows.contains { $0.tradingMode == .spot && $0.amountInvestedUSDT == 50000.0 })
+        #expect(btcRows.contains { $0.tradingMode == .crossMargin && $0.amountInvestedUSDT == 20000.0 })
+    }
+
+    @Test("When showInvestedAssets fails, then error is set")
+    func showInvestedAssetsError() async throws {
+        // Provide balances so all three compute*Holdings() functions
+        // proceed past their early-return guards and call fetchPrices,
+        // allowing the throw to propagate through computeAllHoldings().
+        let processor = try makeProcessor(
+            tradeImportService: .noop,
+            priceService: PriceService(fetchPrices: { _ in
+                throw BinanceError.networkError(underlying: URLError(.notConnectedToInternet))
+            }),
+            modelContainer: try makeContainer(),
+            balanceService: BalanceService(fetchBalances: { ["BTC": 1.0] }),
+            marginBalanceService: MarginBalanceService(
+                fetchCrossMarginAccount: { nil },
+                fetchCrossMarginBalances: {
+                    [CrossMarginBalance(asset: "ETH", borrowed: 0, free: 0, locked: 0, netAsset: 1.0, interest: 0)]
+                },
+                fetchIsolatedMarginBalances: { _ in nil },
+                fetchAllIsolatedMarginBalances: {
+                    [
+                        IsolatedMarginBalance(
+                            symbol: "SOLUSDT", asset: "SOL", role: .base,
+                            borrowed: 0, free: 1.0, locked: 0, interest: 0, netAsset: 1.0
+                        )
+                    ]
+                }
+            )
+        )
+
+        await processor.handle(.showInvestedAssets)
+
+        #expect(processor.state.error != nil)
+        #expect(processor.state.investedAssetsDestination == nil)
+    }
+
+    @Test("When rows are computed, then they are sorted by amount invested descending")
+    func rowsSortedByInvestedAmount() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+
+        // Smallest investment first (to verify descending sort)
+        context.insert(Trade(
+            binanceTradeId: 1, symbol: "ETHUSDT", asset: "ETH",
+            price: 3000, quantity: 1.0, quoteQuantity: 3000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+            isBuyer: true, orderId: 100,
+            tradingMode: .spot
+        ))
+        // Largest investment
+        context.insert(Trade(
+            binanceTradeId: 2, symbol: "BTCUSDT", asset: "BTC",
+            price: 50000, quantity: 1.0, quoteQuantity: 50000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_100_000),
+            isBuyer: true, orderId: 101,
+            tradingMode: .spot
+        ))
+        // Medium investment
+        context.insert(Trade(
+            binanceTradeId: 3, symbol: "SOLUSDT", asset: "SOL",
+            price: 100, quantity: 100.0, quoteQuantity: 10000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_200_000),
+            isBuyer: true, orderId: 102,
+            tradingMode: .spot
+        ))
+        try context.save()
+
+        let processor = try makeProcessor(
+            tradeImportService: .noop,
+            priceService: PriceService(fetchPrices: { _ in
+                ["BTCUSDT": 65000.0, "ETHUSDT": 3500.0, "SOLUSDT": 150.0]
+            }),
+            modelContainer: container,
+            balanceService: BalanceService(fetchBalances: { ["BTC": 1.0, "ETH": 1.0, "SOL": 100.0] })
+        )
+
+        await processor.handle(.showInvestedAssets)
+
+        let destination = try #require(processor.state.investedAssetsDestination)
+        #expect(destination.assets.count == 3)
+        #expect(destination.assets[0].asset == "BTC")
+        #expect(destination.assets[0].amountInvestedUSDT == 50000.0)
+        #expect(destination.assets[1].asset == "SOL")
+        #expect(destination.assets[1].amountInvestedUSDT == 10000.0)
+        #expect(destination.assets[2].asset == "ETH")
+        #expect(destination.assets[2].amountInvestedUSDT == 3000.0)
+    }
+
+    @Test("When destination is set, then it contains current values for each asset")
+    func destinationContainsCurrentValues() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+
+        context.insert(Trade(
+            binanceTradeId: 1, symbol: "BTCUSDT", asset: "BTC",
+            price: 50000, quantity: 1.0, quoteQuantity: 50000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+            isBuyer: true, orderId: 100,
+            tradingMode: .spot
+        ))
+        try context.save()
+
+        let processor = try makeProcessor(
+            tradeImportService: .noop,
+            priceService: PriceService(fetchPrices: { _ in ["BTCUSDT": 65000.0] }),
+            modelContainer: container,
+            balanceService: BalanceService(fetchBalances: { ["BTC": 1.0] })
+        )
+
+        await processor.handle(.showInvestedAssets)
+
+        let destination = try #require(processor.state.investedAssetsDestination)
+        #expect(destination.assets.count == 1)
+        let btc = destination.assets[0]
+        #expect(btc.amountInvestedUSDT == 50000.0)
+        #expect(btc.currentValueUSDT == 65000.0)
+        // totalCurrentValue should match individual current values
+        #expect(destination.totalCurrentValue == 65000.0)
+        #expect(destination.totalInvested == 50000.0)
+    }
+}
