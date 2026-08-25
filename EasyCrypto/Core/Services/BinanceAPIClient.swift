@@ -492,7 +492,7 @@ extension BinanceAPIClient {
                 let timestamp = await timeSynchronizer.adjustedTimestamp()
                 guard let url = BinanceURLBuilder.buildSignedURL(
                     path: "/api/v3/account",
-                    params: [("omitZeroBalances", "true")],
+                    params: [],
                     secret: credentials.secret,
                     timestamp: timestamp
                 ) else {

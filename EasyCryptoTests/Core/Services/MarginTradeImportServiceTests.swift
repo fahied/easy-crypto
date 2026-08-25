@@ -4,9 +4,11 @@
 //  EasyCryptoTests
 //
 //  Tests for ADV-CORE-SERVICES-006: MarginTradeImportService
-//  Mirrors TradeImportServiceTests but verifies margin-specific behavior:
-//  TradingMode parameter, isolatedMarginKey in sync keys, cross/isolated
-//  branching, and MappedTrade with correct tradingMode context.
+//  Tests for ADV-CORE-SERVICES-010: Static asset lists, no retry, per-symbol error handling.
+//
+//  Mirrors TradeImportServiceTests patterns but verifies margin-specific behavior:
+//  TradingMode parameter, static asset lists, per-symbol sync cursors, cross/isolated
+//  branching, and per-symbol error handling without retry logic.
 //
 
 import Foundation
@@ -42,15 +44,7 @@ private func makeMarginTrade(
     )
 }
 
-private func makeClient(
-    crossMarginUserAssets: [BinanceMarginAccount.AssetEntry] = [
-        BinanceMarginAccount.AssetEntry(
-            asset: "BTC", borrowed: "0", free: "0.5",
-            locked: "0", interest: "0", netAsset: "0.5",
-            netAssetOfBtc: "0.5", maxBorrowable: "0.5"
-        ),
-    ],
-    isolatedMarginAssets: [BinanceMarginAsset] = [],
+private func makeMarginClient(
     tradesForSymbol: @escaping @Sendable (_ symbol: String, _ isIsolated: Bool) -> [BinanceMarginTrade] = { _, _ in [] }
 ) -> BinanceAPIClient {
     BinanceAPIClient(
@@ -64,38 +58,196 @@ private func makeClient(
                 totalLiabilityOfBtc: "0.3", totalNetAssetOfBtc: "0.7",
                 totalAsset: "65000", totalLiability: "19500",
                 totalNetAsset: "45500", maxBorrowable: "13000",
-                maintained: nil, userAssets: crossMarginUserAssets
+                maintained: nil, userAssets: []
             )
         },
         fetchMarginMyTrades: { symbol, _, isIsolated in tradesForSymbol(symbol, isIsolated) },
         fetchMarginOpenOrders: { _, _ in [] },
-        fetchMarginAllAssets: { isolatedMarginAssets },
+        fetchMarginAllAssets: { [] },
         fetchIsolatedMarginTransfers: { _ in [] }
     )
 }
 
-private func makeIsolatedAsset(_ asset: String) -> BinanceMarginAsset {
-    BinanceMarginAsset(
-        asset: asset, borrowed: "0", free: "1.0",
-        locked: "0", netAsset: "1.0", maxBorrowable: "1.0", maintained: nil
-    )
+// MARK: - Static Asset List Tests
+
+@Suite("Given a margin trade import service with static asset lists")
+struct MarginStaticAssetListTests {
+
+    @Test("When crossMargin with no existingSync, then all static list symbols are synced")
+    func crossMarginSyncsAllStaticAssets() async throws {
+        let client = makeMarginClient { symbol, _ in
+            [makeMarginTrade(id: 1, symbol: symbol)]
+        }
+        let service = MarginTradeImportService.live(apiClient: client)
+        let result = try await service.sync(.crossMargin, [:])
+
+        let symbols = Set(result.mappedTrades.map(\.symbol))
+        for asset in MarginTradeImportService.knownCrossMarginAssets {
+            #expect(symbols.contains("\(asset)USDT"),
+                "\(asset)USDT should be synced from cross-margin static list")
+        }
+    }
+
+    @Test("When isolatedMargin with no existingSync, then all static list symbols are synced")
+    func isolatedMarginSyncsAllStaticAssets() async throws {
+        let client = makeMarginClient { symbol, _ in
+            [makeMarginTrade(id: 1, symbol: symbol)]
+        }
+        let service = MarginTradeImportService.live(apiClient: client)
+        let result = try await service.sync(.isolatedMargin, [:])
+
+        let symbols = Set(result.mappedTrades.map(\.symbol))
+        for asset in MarginTradeImportService.knownIsolatedMarginAssets {
+            #expect(symbols.contains("\(asset)USDT"),
+                "\(asset)USDT should be synced from isolated-margin static list")
+        }
+    }
+
+    @Test("When crossMargin has existingSync keys, they are included alongside static list")
+    func crossMarginIncludesPreviouslySyncedSymbols() async throws {
+        let client = makeMarginClient { symbol, _ in
+            [makeMarginTrade(id: 1, symbol: symbol)]
+        }
+        let service = MarginTradeImportService.live(apiClient: client)
+        // DOGEUSDT is not in the static list, but has a previous sync cursor
+        let result = try await service.sync(.crossMargin, ["DOGEUSDT": 500])
+
+        let symbols = Set(result.mappedTrades.map(\.symbol))
+        #expect(symbols.contains("SOLUSDT"), "SOL should be synced from static list")
+        #expect(symbols.contains("DOGEUSDT"), "DOGE should be synced from existingSync")
+    }
+
+    @Test("When isolatedMargin has existingSync keys, they are included alongside static list")
+    func isolatedMarginIncludesPreviouslySyncedSymbols() async throws {
+        let client = makeMarginClient { symbol, _ in
+            [makeMarginTrade(id: 1, symbol: symbol)]
+        }
+        let service = MarginTradeImportService.live(apiClient: client)
+        // ADAUSDT is not in the static list, but has a previous sync cursor
+        let result = try await service.sync(.isolatedMargin, ["ADAUSDT": 500])
+
+        let symbols = Set(result.mappedTrades.map(\.symbol))
+        #expect(symbols.contains("DEXEUSDT"), "DEXE should be synced from static list")
+        #expect(symbols.contains("ADAUSDT"), "ADA should be synced from existingSync")
+    }
+
+    @Test("Cross-margin static list contains the correct six assets")
+    func crossMarginStaticListContents() {
+        let assets = MarginTradeImportService.knownCrossMarginAssets
+        #expect(assets.contains("SOL"))
+        #expect(assets.contains("DEXE"))
+        #expect(assets.contains("MMT"))
+        #expect(assets.contains("BANK"))
+        #expect(assets.contains("LTC"))
+        #expect(assets.contains("XRP"))
+        #expect(assets.count == 6)
+    }
+
+    @Test("Isolated-margin static list contains the correct three assets")
+    func isolatedMarginStaticListContents() {
+        let assets = MarginTradeImportService.knownIsolatedMarginAssets
+        #expect(assets.contains("DEXE"))
+        #expect(assets.contains("MMT"))
+        #expect(assets.contains("XRP"))
+        #expect(assets.count == 3)
+    }
+
+    @Test("When all sources overlap for cross-margin, no duplicate symbols are fetched")
+    func noDuplicateSymbolsWhenSourcesOverlap() async throws {
+        var fetchCounts: [String: Int] = [:]
+        let client = makeMarginClient { symbol, _ in
+            fetchCounts[symbol, default: 0] += 1
+            return [makeMarginTrade(id: 1, symbol: symbol)]
+        }
+        let service = MarginTradeImportService.live(apiClient: client)
+        // SOL is in static list; add it to existingSync too
+        let result = try await service.sync(.crossMargin, ["SOLUSDT": 500])
+
+        let solTrades = result.mappedTrades.filter { $0.symbol == "SOLUSDT" }
+        #expect(solTrades.count == 1, "SOLUSDT should appear exactly once")
+        #expect(fetchCounts["SOLUSDT"] == 1, "SOLUSDT should be fetched exactly once")
+    }
+}
+
+// MARK: - Incremental Sync Tests
+
+@Suite("Given a margin trade import service with existing sync metadata")
+struct MarginIncrementalSyncTests {
+
+    @Test("When crossMargin has existingSync, fromId starts at lastTradeId + 1")
+    func crossMarginRespectsFromId() async throws {
+        let client = makeMarginClient { symbol, _ in
+            if symbol == "SOLUSDT" {
+                return [makeMarginTrade(id: 51, symbol: symbol)]
+            }
+            return []
+        }
+        let service = MarginTradeImportService.live(apiClient: client)
+        let result = try await service.sync(.crossMargin, ["SOLUSDT": 50])
+
+        #expect(result.mappedTrades.count == 1)
+        #expect(result.mappedTrades.first?.binanceTradeId == 51)
+    }
+
+    @Test("When isolatedMargin has existingSync, fromId starts at lastTradeId + 1")
+    func isolatedMarginRespectsFromId() async throws {
+        let client = makeMarginClient { symbol, _ in
+            if symbol == "DEXEUSDT" {
+                return [makeMarginTrade(id: 101, symbol: symbol)]
+            }
+            return []
+        }
+        let service = MarginTradeImportService.live(apiClient: client)
+        let result = try await service.sync(.isolatedMargin, ["DEXEUSDT": 100])
+
+        #expect(result.mappedTrades.count == 1)
+        #expect(result.mappedTrades.first?.binanceTradeId == 101)
+    }
+
+    @Test("When crossMargin existingSync is empty, fromId is nil (full fetch)")
+    func crossMarginNoExistingSyncDoesFullFetch() async throws {
+        let client = makeMarginClient { symbol, _ in
+            if symbol == "XRPUSDT" {
+                return [makeMarginTrade(id: 1, symbol: symbol)]
+            }
+            return []
+        }
+        let service = MarginTradeImportService.live(apiClient: client)
+        let result = try await service.sync(.crossMargin, [:])
+
+        #expect(result.mappedTrades.count == 1)
+        #expect(result.mappedTrades.first?.binanceTradeId == 1)
+    }
+
+    @Test("When isolatedMargin existingSync is empty, fromId is nil (full fetch)")
+    func isolatedMarginNoExistingSyncDoesFullFetch() async throws {
+        let client = makeMarginClient { symbol, _ in
+            if symbol == "MMTUSDT" {
+                return [makeMarginTrade(id: 1, symbol: symbol)]
+            }
+            return []
+        }
+        let service = MarginTradeImportService.live(apiClient: client)
+        let result = try await service.sync(.isolatedMargin, [:])
+
+        #expect(result.mappedTrades.count == 1)
+        #expect(result.mappedTrades.first?.binanceTradeId == 1)
+    }
 }
 
 // MARK: - Mode Tests
 
-@Suite("Given a margin trade import service")
-struct ModeTests {
+@Suite("Given a margin trade import service routing by TradingMode")
+struct MarginModeTests {
 
-    @Test("When TradingMode.crossMargin, then uses fetchMarginMyTrades with isIsolated=false")
-    func crossMarginCallsCorrectEndpoint() async throws {
+    @Test("When TradingMode.crossMargin, then fetchMarginMyTrades called with isIsolated=false")
+    func crossMarginUsesCorrectEndpoint() async throws {
         let calls = Locked<[(symbol: String, isIsolated: Bool)]>([])
 
-        let client = makeClient(
-            tradesForSymbol: { symbol, isIsolated in
-                calls.value.append((symbol, isIsolated))
-                return [makeMarginTrade(id: 1, symbol: symbol, isIsolated: false)]
-            }
-        )
+        let client = makeMarginClient { symbol, isIsolated in
+            calls.value.append((symbol, isIsolated))
+            return [makeMarginTrade(id: 1, symbol: symbol, isIsolated: false)]
+        }
 
         let service = MarginTradeImportService.live(apiClient: client)
         _ = try await service.sync(.crossMargin, [:])
@@ -104,16 +256,14 @@ struct ModeTests {
         #expect(btcCall.isIsolated == false)
     }
 
-    @Test("When TradingMode.isolatedMargin, then uses fetchMarginMyTrades with isIsolated=true")
-    func isolatedMarginCallsCorrectEndpoint() async throws {
+    @Test("When TradingMode.isolatedMargin, then fetchMarginMyTrades called with isIsolated=true")
+    func isolatedMarginUsesCorrectEndpoint() async throws {
         let calls = Locked<[(symbol: String, isIsolated: Bool)]>([])
 
-        let client = makeClient(
-            tradesForSymbol: { symbol, isIsolated in
-                calls.value.append((symbol, isIsolated))
-                return [makeMarginTrade(id: 1, symbol: symbol, isIsolated: true)]
-            }
-        )
+        let client = makeMarginClient { symbol, isIsolated in
+            calls.value.append((symbol, isIsolated))
+            return [makeMarginTrade(id: 1, symbol: symbol, isIsolated: true)]
+        }
 
         let service = MarginTradeImportService.live(apiClient: client)
         _ = try await service.sync(.isolatedMargin, ["BTCUSDT": 0])
@@ -128,52 +278,57 @@ struct ModeTests {
 @Suite("Given a margin trade import service generating sync updates")
 struct MarginSyncMetadataTests {
 
-    @Test("When crossMargin, then sync update uses 'cross' as the key")
-    func crossMarginSyncKey() async throws {
-        let client = makeClient(
-            tradesForSymbol: { symbol, _ in symbol == "BTCUSDT" ? [makeMarginTrade(id: 50, symbol: symbol)] : [] }
-        )
+    @Test("When crossMargin syncs, then sync update uses the symbol as key")
+    func crossMarginSyncUsesSymbolKey() async throws {
+        let client = makeMarginClient { symbol, _ in
+            [makeMarginTrade(id: 50, symbol: symbol)]
+        }
         let service = MarginTradeImportService.live(apiClient: client)
-        let result = try await service.sync(.crossMargin, ["cross": 10])
+        let result = try await service.sync(.crossMargin, ["SOLUSDT": 10])
 
-        let update = try #require(result.syncUpdates.first { $0.symbol == "cross" })
+        let update = try #require(result.syncUpdates.first { $0.symbol == "SOLUSDT" })
         #expect(update.lastTradeId == 50)
     }
 
-    @Test("When isolatedMargin, then sync update uses the symbol as the key")
-    func isolatedMarginSyncKey() async throws {
-        let client = makeClient(
-            tradesForSymbol: { symbol, _ in symbol == "BTCUSDT" ? [makeMarginTrade(id: 75, symbol: symbol)] : [] }
-        )
+    @Test("When isolatedMargin syncs, then sync update uses the symbol as key")
+    func isolatedMarginSyncUsesSymbolKey() async throws {
+        let client = makeMarginClient { symbol, _ in
+            [makeMarginTrade(id: 75, symbol: symbol)]
+        }
         let service = MarginTradeImportService.live(apiClient: client)
-        let result = try await service.sync(.isolatedMargin, ["BTCUSDT": 10])
+        let result = try await service.sync(.isolatedMargin, ["DEXEUSDT": 10])
 
-        let update = try #require(result.syncUpdates.first { $0.symbol == "BTCUSDT" })
+        let update = try #require(result.syncUpdates.first { $0.symbol == "DEXEUSDT" })
         #expect(update.lastTradeId == 75)
     }
 
-    @Test("When crossMargin incremental sync, then fromId starts at lastTradeId + 1")
-    func crossMarginIncrementalSync() async throws {
-        let client = makeClient(
-            tradesForSymbol: { symbol, _ in symbol == "BTCUSDT" ? [makeMarginTrade(id: 51, symbol: symbol)] : [] }
-        )
+    @Test("When multiple cross-margin symbols have trades, then each gets a sync update")
+    func crossMarginMultipleSyncUpdates() async throws {
+        let client = makeMarginClient { symbol, _ in
+            if symbol == "SOLUSDT" {
+                return [makeMarginTrade(id: 10, symbol: symbol)]
+            } else if symbol == "XRPUSDT" {
+                return [makeMarginTrade(id: 20, symbol: symbol)]
+            }
+            return []
+        }
         let service = MarginTradeImportService.live(apiClient: client)
-        let result = try await service.sync(.crossMargin, ["cross": 50])
+        let result = try await service.sync(.crossMargin, [:])
 
-        #expect(result.mappedTrades.count == 1)
-        #expect(result.mappedTrades.first?.binanceTradeId == 51)
+        #expect(result.syncUpdates.count == 2)
+        let solUpdate = result.syncUpdates.first { $0.symbol == "SOLUSDT" }
+        let xrpUpdate = result.syncUpdates.first { $0.symbol == "XRPUSDT" }
+        #expect(solUpdate?.lastTradeId == 10)
+        #expect(xrpUpdate?.lastTradeId == 20)
     }
 
-    @Test("When isolatedMargin incremental sync, then fromId starts at lastTradeId + 1")
-    func isolatedMarginIncrementalSync() async throws {
-        let client = makeClient(
-            tradesForSymbol: { symbol, _ in symbol == "BTCUSDT" ? [makeMarginTrade(id: 101, symbol: symbol)] : [] }
-        )
+    @Test("When no trades returned, then no sync updates are produced")
+    func noTradesNoSyncUpdates() async throws {
+        let client = makeMarginClient { _, _ in [] }
         let service = MarginTradeImportService.live(apiClient: client)
-        let result = try await service.sync(.isolatedMargin, ["BTCUSDT": 100])
+        let result = try await service.sync(.crossMargin, [:])
 
-        #expect(result.mappedTrades.count == 1)
-        #expect(result.mappedTrades.first?.binanceTradeId == 101)
+        #expect(result.syncUpdates.isEmpty)
     }
 }
 
@@ -184,19 +339,17 @@ struct MarginTradeMappingTests {
 
     @Test("When API returns a margin trade, then all fields are mapped correctly")
     func mapsAllFields() async throws {
-        let client = makeClient(
-            tradesForSymbol: { symbol, _ in
-                guard symbol == "BTCUSDT" else { return [] }
-                return [
-                    makeMarginTrade(
-                        id: 12345, symbol: "BTCUSDT", price: "50000.50",
-                        qty: "0.25", quoteQty: "12500.125",
-                        commission: "0.001", commissionAsset: "BTC",
-                        time: 1_700_000_000_000, isBuyer: true, orderId: 9876
-                    ),
-                ]
-            }
-        )
+        let client = makeMarginClient { symbol, _ in
+            guard symbol == "BTCUSDT" else { return [] }
+            return [
+                makeMarginTrade(
+                    id: 12345, symbol: "BTCUSDT", price: "50000.50",
+                    qty: "0.25", quoteQty: "12500.125",
+                    commission: "0.001", commissionAsset: "BTC",
+                    time: 1_700_000_000_000, isBuyer: true, orderId: 9876
+                ),
+            ]
+        }
         let service = MarginTradeImportService.live(apiClient: client)
         let result = try await service.sync(.crossMargin, [:])
 
@@ -216,18 +369,11 @@ struct MarginTradeMappingTests {
 
     @Test("When API returns a sell trade, then isBuyer is false")
     func mapsSellTrade() async throws {
-        let client = makeClient(
-            crossMarginUserAssets: [
-                BinanceMarginAccount.AssetEntry(
-                    asset: "ETH", borrowed: "0", free: "10.0",
-                    locked: "0", interest: "0", netAsset: "10.0",
-                    netAssetOfBtc: "0.15", maxBorrowable: "10.0"
-                ),
-            ],
-            tradesForSymbol: { symbol, _ in
-                symbol == "ETHUSDT" ? [makeMarginTrade(id: 1, symbol: "ETHUSDT", isBuyer: false)] : []
-            }
-        )
+        let client = makeMarginClient { symbol, _ in
+            symbol == "ETHUSDT"
+                ? [makeMarginTrade(id: 1, symbol: "ETHUSDT", isBuyer: false)]
+                : []
+        }
         let service = MarginTradeImportService.live(apiClient: client)
         let result = try await service.sync(.crossMargin, [:])
 
@@ -238,22 +384,19 @@ struct MarginTradeMappingTests {
 
     @Test("When BinanceMarginTrade has isIsolated=true, then still mapped correctly")
     func mapsIsolatedMarginTrade() async throws {
-        let client = makeClient(
-            isolatedMarginAssets: [makeIsolatedAsset("ETH")],
-            tradesForSymbol: { symbol, _ in
-                guard symbol == "ETHUSDT" else { return [] }
-                return [
-                    makeMarginTrade(
-                        id: 42, symbol: "ETHUSDT", price: "3000",
-                        qty: "5.0", quoteQty: "15000",
-                        commission: "0.01", commissionAsset: "ETH",
-                        time: 1_700_000_000_000, isBuyer: false, orderId: 200,
-                        isIsolated: true, marginBuyBorrowAmount: "1000",
-                        marginBuyBorrowAsset: "USDT"
-                    ),
-                ]
-            }
-        )
+        let client = makeMarginClient { symbol, _ in
+            guard symbol == "ETHUSDT" else { return [] }
+            return [
+                makeMarginTrade(
+                    id: 42, symbol: "ETHUSDT", price: "3000",
+                    qty: "5.0", quoteQty: "15000",
+                    commission: "0.01", commissionAsset: "ETH",
+                    time: 1_700_000_000_000, isBuyer: false, orderId: 200,
+                    isIsolated: true, marginBuyBorrowAmount: "1000",
+                    marginBuyBorrowAsset: "USDT"
+                ),
+            ]
+        }
         let service = MarginTradeImportService.live(apiClient: client)
         let result = try await service.sync(.isolatedMargin, ["ETHUSDT": 0])
 
@@ -264,20 +407,15 @@ struct MarginTradeMappingTests {
     }
 }
 
-// MARK: - Pagination Tests
+// MARK: - Error Handling Tests
 
-@Suite("Given a margin trade import service with pagination")
-struct MarginPaginationTests {
+@Suite("Given a margin trade import service with API errors")
+struct MarginErrorTests {
 
-    @Test("When paginating, then fromId is last trade ID + 1")
-    func paginationFromIdIsCorrect() async throws {
-        let callCount = Locked(0)
-        var receivedFromIds: [Int64?] = []
-
+    @Test("When fetchMarginMyTrades fails for one cross-margin symbol, then other symbols still sync")
+    func crossMarginPartialFailureContinues() async throws {
         let client = BinanceAPIClient(
-            fetchAccount: { [
-                BinanceBalance(asset: "BTC", free: "0.5", locked: "0"),
-            ] },
+            fetchAccount: { [] },
             fetchMyTrades: { _, _ in [] },
             fetchTickerPrices: { _ in [] },
             fetchKlines: { _, _, _ in [] },
@@ -287,27 +425,15 @@ struct MarginPaginationTests {
                     totalLiabilityOfBtc: "0.3", totalNetAssetOfBtc: "0.7",
                     totalAsset: "65000", totalLiability: "19500",
                     totalNetAsset: "45500", maxBorrowable: "13000",
-                    maintained: nil, userAssets: [
-                        BinanceMarginAccount.AssetEntry(
-                            asset: "BTC", borrowed: "0", free: "0.5",
-                            locked: "0", interest: "0", netAsset: "0.5",
-                            netAssetOfBtc: "0.5", maxBorrowable: "0.5"
-                        ),
-                    ]
+                    maintained: nil, userAssets: []
                 )
             },
-            fetchMarginMyTrades: { symbol, fromId, _ in
-                callCount.value += 1
-                guard symbol == "BTCUSDT" else { return [] }
-                receivedFromIds.append(fromId)
-                if fromId == nil {
-                    return (0..<1000).map {
-                        makeMarginTrade(id: Int64($0), symbol: "BTCUSDT", time: 1_700_000_000_000 + Int64($0))
-                    }
-                } else if fromId == 1000 {
-                    return (1000..<1200).map {
-                        makeMarginTrade(id: Int64($0), symbol: "BTCUSDT", time: 1_700_000_000_000 + Int64($0))
-                    }
+            fetchMarginMyTrades: { symbol, _, _ in
+                if symbol == "SOLUSDT" {
+                    throw BinanceError.apiError(code: -1121, message: "Invalid symbol")
+                }
+                if symbol == "XRPUSDT" {
+                    return [makeMarginTrade(id: 1, symbol: symbol)]
                 }
                 return []
             },
@@ -319,59 +445,15 @@ struct MarginPaginationTests {
         let service = MarginTradeImportService.live(apiClient: client)
         let result = try await service.sync(.crossMargin, [:])
 
-        #expect(result.mappedTrades.count == 1200)
-        // First call has nil fromId, second call has 1000 (last of first batch + 1)
-        #expect(receivedFromIds[0] == nil)
-        #expect(receivedFromIds[1] == 1000)
-    }
-}
-
-// MARK: - Error Handling Tests
-
-@Suite("Given a margin trade import service with API errors")
-struct MarginErrorTests {
-
-    @Test("When fetchMarginAccount throws, then error propagates")
-    func marginAccountErrorPropagates() async {
-        let client = BinanceAPIClient(
-            fetchAccount: { [
-                BinanceBalance(asset: "BTC", free: "0.5", locked: "0"),
-            ] },
-            fetchMyTrades: { _, _ in [] },
-            fetchTickerPrices: { _ in [] },
-            fetchKlines: { _, _, _ in [] },
-            fetchMarginAccount: {
-                throw BinanceError.networkError(underlying: URLError(.notConnectedToInternet))
-            },
-            fetchMarginMyTrades: { _, _, _ in [] },
-            fetchMarginOpenOrders: { _, _ in [] },
-            fetchMarginAllAssets: { [] },
-            fetchIsolatedMarginTransfers: { _ in [] }
-        )
-
-        let service = MarginTradeImportService.live(apiClient: client)
-
-        do {
-            _ = try await service.sync(.crossMargin, ["cross": 0])
-            Issue.record("Expected error to propagate")
-        } catch let error as BinanceError {
-            if case .networkError = error {
-                // expected
-            } else {
-                Issue.record("Expected networkError but got \(error)")
-            }
-        } catch {
-            Issue.record("Unexpected error type: \(error)")
-        }
+        // XRP should still succeed despite SOL failure
+        #expect(result.mappedTrades.count == 1)
+        #expect(result.mappedTrades[0].symbol == "XRPUSDT")
     }
 
-    @Test("When fetchMarginMyTrades fails for one symbol, then other symbols still sync")
-    func partialFailureContinues() async throws {
+    @Test("When fetchMarginMyTrades fails for one isolated-margin symbol, then other symbols still sync")
+    func isolatedMarginPartialFailureContinues() async throws {
         let client = BinanceAPIClient(
-            fetchAccount: { [
-                BinanceBalance(asset: "BTC", free: "0.5", locked: "0"),
-                BinanceBalance(asset: "ETH", free: "10.0", locked: "0"),
-            ] },
+            fetchAccount: { [] },
             fetchMyTrades: { _, _ in [] },
             fetchTickerPrices: { _ in [] },
             fetchKlines: { _, _, _ in [] },
@@ -381,25 +463,14 @@ struct MarginErrorTests {
                     totalLiabilityOfBtc: "0.3", totalNetAssetOfBtc: "0.7",
                     totalAsset: "65000", totalLiability: "19500",
                     totalNetAsset: "45500", maxBorrowable: "13000",
-                    maintained: nil, userAssets: [
-                        BinanceMarginAccount.AssetEntry(
-                            asset: "BTC", borrowed: "0", free: "0.5",
-                            locked: "0", interest: "0", netAsset: "0.5",
-                            netAssetOfBtc: "0.5", maxBorrowable: "0.5"
-                        ),
-                        BinanceMarginAccount.AssetEntry(
-                            asset: "ETH", borrowed: "0", free: "10.0",
-                            locked: "0", interest: "0", netAsset: "10.0",
-                            netAssetOfBtc: "0.15", maxBorrowable: "10.0"
-                        ),
-                    ]
+                    maintained: nil, userAssets: []
                 )
             },
             fetchMarginMyTrades: { symbol, _, _ in
-                if symbol == "BTCUSDT" {
+                if symbol == "DEXEUSDT" {
                     throw BinanceError.apiError(code: -1121, message: "Invalid symbol")
                 }
-                if symbol == "ETHUSDT" {
+                if symbol == "MMTUSDT" {
                     return [makeMarginTrade(id: 1, symbol: symbol)]
                 }
                 return []
@@ -410,27 +481,16 @@ struct MarginErrorTests {
         )
 
         let service = MarginTradeImportService.live(apiClient: client)
-        let result = try await service.sync(.crossMargin, ["cross": 0])
+        let result = try await service.sync(.isolatedMargin, [:])
 
-        // ETH should still succeed despite BTC failure
         #expect(result.mappedTrades.count == 1)
-        #expect(result.mappedTrades[0].symbol == "ETHUSDT")
+        #expect(result.mappedTrades[0].symbol == "MMTUSDT")
     }
-}
 
-// MARK: - Rate-Limit Retry Tests
-
-@Suite("Given a margin trade import service handling rate limits")
-struct MarginRateLimitTests {
-
-    @Test("When a symbol is rate limited then succeeds, then retries and fetches trades")
-    func retriesOnRateLimit() async throws {
-        let callCount = Locked(0)
-
+    @Test("When all cross-margin symbols fail, then returns empty result with no sync updates")
+    func allCrossMarginSymbolsFailReturnsEmpty() async throws {
         let client = BinanceAPIClient(
-            fetchAccount: { [
-                BinanceBalance(asset: "BTC", free: "0.5", locked: "0"),
-            ] },
+            fetchAccount: { [] },
             fetchMyTrades: { _, _ in [] },
             fetchTickerPrices: { _ in [] },
             fetchKlines: { _, _, _ in [] },
@@ -440,61 +500,11 @@ struct MarginRateLimitTests {
                     totalLiabilityOfBtc: "0.3", totalNetAssetOfBtc: "0.7",
                     totalAsset: "65000", totalLiability: "19500",
                     totalNetAsset: "45500", maxBorrowable: "13000",
-                    maintained: nil, userAssets: [
-                        BinanceMarginAccount.AssetEntry(
-                            asset: "BTC", borrowed: "0", free: "0.5",
-                            locked: "0", interest: "0", netAsset: "0.5",
-                            netAssetOfBtc: "0.5", maxBorrowable: "0.5"
-                        ),
-                    ]
-                )
-            },
-            fetchMarginMyTrades: { symbol, _, _ in
-                guard symbol == "BTCUSDT" else { return [] }
-                callCount.value += 1
-                if callCount.value == 1 {
-                    throw BinanceError.rateLimited(retryAfterSeconds: nil)
-                }
-                return [makeMarginTrade(id: 1, symbol: symbol)]
-            },
-            fetchMarginOpenOrders: { _, _ in [] },
-            fetchMarginAllAssets: { [] },
-            fetchIsolatedMarginTransfers: { _ in [] }
-        )
-
-        let service = MarginTradeImportService.live(apiClient: client)
-        let result = try await service.sync(.crossMargin, ["cross": 0])
-
-        #expect(callCount.value >= 2)
-        #expect(result.mappedTrades.count == 1)
-    }
-
-    @Test("When a symbol is rate limited on all retries, then it is skipped")
-    func skipsAfterExhaustingRateLimitRetries() async throws {
-        let client = BinanceAPIClient(
-            fetchAccount: { [
-                BinanceBalance(asset: "BTC", free: "0.5", locked: "0"),
-            ] },
-            fetchMyTrades: { _, _ in [] },
-            fetchTickerPrices: { _ in [] },
-            fetchKlines: { _, _, _ in [] },
-            fetchMarginAccount: {
-                BinanceMarginAccount(
-                    marginLevel: "2.0", totalAssetOfBtc: "1.0",
-                    totalLiabilityOfBtc: "0.3", totalNetAssetOfBtc: "0.7",
-                    totalAsset: "65000", totalLiability: "19500",
-                    totalNetAsset: "45500", maxBorrowable: "13000",
-                    maintained: nil, userAssets: [
-                        BinanceMarginAccount.AssetEntry(
-                            asset: "BTC", borrowed: "0", free: "0.5",
-                            locked: "0", interest: "0", netAsset: "0.5",
-                            netAssetOfBtc: "0.5", maxBorrowable: "0.5"
-                        ),
-                    ]
+                    maintained: nil, userAssets: []
                 )
             },
             fetchMarginMyTrades: { _, _, _ in
-                throw BinanceError.rateLimited(retryAfterSeconds: nil)
+                throw BinanceError.networkError(underlying: URLError(.notConnectedToInternet))
             },
             fetchMarginOpenOrders: { _, _ in [] },
             fetchMarginAllAssets: { [] },
@@ -502,8 +512,89 @@ struct MarginRateLimitTests {
         )
 
         let service = MarginTradeImportService.live(apiClient: client)
-        let result = try await service.sync(.crossMargin, ["cross": 0])
+        let result = try await service.sync(.crossMargin, [:])
 
+        #expect(result.mappedTrades.isEmpty)
+        #expect(result.syncUpdates.isEmpty)
+    }
+}
+
+// MARK: - No-Retry Behavior Tests
+
+@Suite("Given a margin trade import service with no retry logic")
+struct MarginNoRetryTests {
+
+    @Test("When crossMargin fetch succeeds, each static asset is fetched exactly once")
+    func crossMarginNoDuplicateFetches() async throws {
+        let callCount = Locked<[String: Int]>([:])
+        let client = makeMarginClient { symbol, _ in
+            var counts = callCount.value
+            counts[symbol, default: 0] += 1
+            callCount.value = counts
+            return [makeMarginTrade(id: 1, symbol: symbol)]
+        }
+        let service = MarginTradeImportService.live(apiClient: client)
+        _ = try await service.sync(.crossMargin, [:])
+
+        let counts = callCount.value
+        for asset in MarginTradeImportService.knownCrossMarginAssets {
+            let symbol = "\(asset)USDT"
+            let fetchCount = counts[symbol] ?? 0
+            #expect(fetchCount == 1,
+                "\(symbol) should be fetched exactly once, got \(fetchCount)")
+        }
+    }
+
+    @Test("When isolatedMargin fetch succeeds, each static asset is fetched exactly once")
+    func isolatedMarginNoDuplicateFetches() async throws {
+        let callCount = Locked<[String: Int]>([:])
+        let client = makeMarginClient { symbol, _ in
+            var counts = callCount.value
+            counts[symbol, default: 0] += 1
+            callCount.value = counts
+            return [makeMarginTrade(id: 1, symbol: symbol)]
+        }
+        let service = MarginTradeImportService.live(apiClient: client)
+        _ = try await service.sync(.isolatedMargin, [:])
+
+        let counts = callCount.value
+        for asset in MarginTradeImportService.knownIsolatedMarginAssets {
+            let symbol = "\(asset)USDT"
+            let fetchCount = counts[symbol] ?? 0
+            #expect(fetchCount == 1,
+                "\(symbol) should be fetched exactly once, got \(fetchCount)")
+        }
+    }
+
+    @Test("When crossMargin fetch fails, each static asset is fetched exactly once (no retry)")
+    func crossMarginFailedSymbolNotRetried() async throws {
+        let client = BinanceAPIClient(
+            fetchAccount: { [] },
+            fetchMyTrades: { _, _ in [] },
+            fetchTickerPrices: { _ in [] },
+            fetchKlines: { _, _, _ in [] },
+            fetchMarginAccount: {
+                BinanceMarginAccount(
+                    marginLevel: "2.0", totalAssetOfBtc: "1.0",
+                    totalLiabilityOfBtc: "0.3", totalNetAssetOfBtc: "0.7",
+                    totalAsset: "65000", totalLiability: "19500",
+                    totalNetAsset: "45500", maxBorrowable: "13000",
+                    maintained: nil, userAssets: []
+                )
+            },
+            fetchMarginMyTrades: { symbol, _, _ in
+                // Always fail — if retry existed, this would be called >1 time per symbol
+                throw BinanceError.networkError(underlying: URLError(.notConnectedToInternet))
+            },
+            fetchMarginOpenOrders: { _, _ in [] },
+            fetchMarginAllAssets: { [] },
+            fetchIsolatedMarginTransfers: { _ in [] }
+        )
+
+        let service = MarginTradeImportService.live(apiClient: client)
+        let result = try await service.sync(.crossMargin, [:])
+
+        // All symbols should have empty results, no crash, no retries
         #expect(result.mappedTrades.isEmpty)
         #expect(result.syncUpdates.isEmpty)
     }
@@ -530,7 +621,7 @@ struct MarginPreviewNoopTests {
 
 // MARK: - Helpers
 
-/// A simple thread-safe integer wrapper for tracking call counts across async closures.
+/// A simple thread-safe wrapper for tracking values across async closures.
 private final class Locked<T>: @unchecked Sendable {
     private let lock = NSLock()
     private var _value: T

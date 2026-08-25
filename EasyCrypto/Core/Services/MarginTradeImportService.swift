@@ -34,10 +34,7 @@ extension MarginTradeImportService {
         category: "sync"
     )
 
-    nonisolated private static let interRequestDelay: Duration = .milliseconds(300)
-
-    /// Maximum retries per symbol when a 429 rate-limit response is received.
-    nonisolated private static let maxRateLimitRetries = 3
+    nonisolated private static let maxConcurrentFetches = 4
 
     static func live(apiClient: BinanceAPIClient) -> MarginTradeImportService {
         MarginTradeImportService(
@@ -60,6 +57,16 @@ extension MarginTradeImportService {
         )
     }
 
+    // MARK: - Static Asset Lists
+
+    nonisolated static let knownCrossMarginAssets: [String] = [
+        "SOL", "DEXE", "MMT", "BANK", "LTC", "XRP"
+    ]
+
+    nonisolated static let knownIsolatedMarginAssets: [String] = [
+        "DEXE", "MMT", "XRP"
+    ]
+
     // MARK: - Cross-Margin Sync
 
     /// Cross-margin keeps one sync cursor per symbol, since Binance trade ids are
@@ -68,19 +75,7 @@ extension MarginTradeImportService {
         apiClient: BinanceAPIClient,
         existingSync: [String: Int64]
     ) async throws -> TradeImportResult {
-        let account = try await apiClient.fetchMarginAccount()
-        let balanceAssets = (account.userAssets ?? [])
-            .compactMap(\.asset)
-            .filter { $0 != "USDT" }
-
-        let netAssetThreshold: Double = 0.000001
-        let filteredBalanceAssets = balanceAssets.filter { asset in
-            let entry = account.userAssets?.first { $0.asset == asset }
-            let netAsset = Double(entry?.netAsset ?? "0") ?? 0
-            return netAsset > netAssetThreshold
-        }
-
-        let staticAssets = Set(TradeImportService.knownAssets)
+        let staticAssets = Self.knownCrossMarginAssets
         let knownAssets = Set(
             existingSync.keys
                 .filter { $0.hasSuffix("USDT") }
@@ -88,65 +83,49 @@ extension MarginTradeImportService {
         )
 
         let assets = Array(
-            staticAssets.union(filteredBalanceAssets).union(knownAssets)
+            Set(staticAssets).union(knownAssets)
         )
         .sorted()
 
         guard !assets.isEmpty else {
-            logger.info("No non-USDT assets found for cross-margin sync")
+            logger.info("No assets found for cross-margin sync")
             return .empty
         }
 
-        logger.info("Cross-margin: discovered \(assets.count) assets")
+        logger.info("Cross-margin: syncing \(assets.count) assets")
 
         var allTrades: [MappedTrade] = []
         var allSyncUpdates: [SyncUpdate] = []
 
-        for (index, asset) in assets.enumerated() {
-            let symbol = "\(asset)USDT"
-            let startFromId = existingSync[symbol].map { $0 + 1 }
+        let semaphore = AsyncSemaphore(bitPattern: Self.maxConcurrentFetches)
 
-            do {
-                let assetTrades = try await fetchMarginTradesWithRetry(
-                    apiClient: apiClient,
-                    symbol: symbol,
-                    fromId: startFromId,
-                    isIsolated: false
-                )
+        try await withThrowingTaskGroup(of: MarginPerAssetResult.self) { group in
+            for asset in assets {
+                let symbol = "\(asset)USDT"
+                let startFromId = existingSync[symbol].map { $0 + 1 }
 
-                let mapped = assetTrades.map { trade in
-                    MappedTrade(
-                        binanceTradeId: trade.id,
-                        symbol: trade.symbol,
+                group.addTask {
+                    await semaphore.wait()
+                    defer { await semaphore.signal() }
+                    return await Self.fetchMarginTradesForAsset(
+                        apiClient: apiClient,
+                        symbol: symbol,
                         asset: asset,
-                        price: Double(trade.price) ?? 0,
-                        quantity: Double(trade.qty) ?? 0,
-                        quoteQuantity: Double(trade.quoteQty) ?? 0,
-                        commission: Double(trade.commission) ?? 0,
-                        commissionAsset: trade.commissionAsset,
-                        timestamp: Date(timeIntervalSince1970: Double(trade.time) / 1000),
-                        isBuyer: trade.isBuyer,
-                        orderId: trade.orderId
+                        fromId: startFromId,
+                        isIsolated: false
                     )
                 }
-                allTrades.append(contentsOf: mapped)
+            }
 
-                if let lastTrade = assetTrades.last {
+            for try await result in group {
+                allTrades.append(contentsOf: result.trades)
+                if let lastTradeId = result.lastTradeId {
                     allSyncUpdates.append(SyncUpdate(
-                        symbol: symbol,
-                        lastTradeId: lastTrade.id,
+                        symbol: result.symbol,
+                        lastTradeId: lastTradeId,
                         syncDate: Date()
                     ))
                 }
-
-                logger.info("Cross-margin: fetched \(assetTrades.count) trades for \(symbol)")
-            } catch {
-                logger.error("Cross-margin: failed to fetch trades for \(symbol): \(error)")
-                continue
-            }
-
-            if index < assets.count - 1 {
-                try? await Task.sleep(for: interRequestDelay)
             }
         }
 
@@ -163,38 +142,12 @@ extension MarginTradeImportService {
         apiClient: BinanceAPIClient,
         existingSync: [String: Int64]
     ) async throws -> TradeImportResult {
-        // Isolated-margin positions live under `/sapi/v1/margin/isolated/account`,
-        // each entry keyed by its own trading-pair `symbol` (e.g. "DEXEUSDT") with
-        // a `baseAsset`/`quoteAsset` pair. `/sapi/v1/margin/allAssets` returns
-        // Binance-wide asset metadata (not the user's isolated positions), so it
-        // can never surface a symbol the account actually holds — that was the
-        // bug: newly opened isolated pairs (e.g. DEXEUSDT) were never discovered.
-        let isolatedAccount = try await apiClient.fetchIsolatedMarginAccount([])
-
-        let netAssetThreshold: Double = 0.000001
-        let activePairs = isolatedAccount.assets.filter { pair in
-            let netAsset = Double(pair.baseAsset.netAsset) ?? 0
-            return netAsset > netAssetThreshold
-        }
-        let balanceEntries = activePairs.map { pair in
-            (symbol: pair.symbol, asset: pair.baseAsset.asset)
-        }
-        let symbolToAsset = Dictionary(
-            balanceEntries.map { ($0.symbol, $0.asset) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        // Symbols known only from a previous sync cursor have no baseAsset in the
-        // isolated account response, so fall back to stripping the quote asset.
-        func baseAsset(of symbol: String) -> String {
-            symbolToAsset[symbol] ?? String(symbol.dropLast(4))
-        }
-
+        let staticSymbols = Set(Self.knownIsolatedMarginAssets.map { "\($0)USDT" })
         let previouslySyncedSymbols = existingSync.keys
             .filter { $0.hasSuffix("USDT") }
-        let staticSymbols = Set(TradeImportService.knownAssets.map { "\($0)USDT" })
 
         let symbols = Array(
-            staticSymbols.union(balanceEntries.map(\.symbol)).union(previouslySyncedSymbols)
+            staticSymbols.union(previouslySyncedSymbols)
         )
         .sorted()
 
@@ -203,58 +156,41 @@ extension MarginTradeImportService {
             return .empty
         }
 
-        logger.info("Isolated-margin: discovered \(symbols.count) symbols")
+        logger.info("Isolated-margin: syncing \(symbols.count) symbols")
 
         var allTrades: [MappedTrade] = []
         var allSyncUpdates: [SyncUpdate] = []
 
-        for (index, symbol) in symbols.enumerated() {
-            let asset = baseAsset(of: symbol)
-            let lastTradeId = existingSync[symbol]
-            let startFromId = lastTradeId.map { $0 + 1 }
+        let semaphore = AsyncSemaphore(bitPattern: Self.maxConcurrentFetches)
 
+        try await withThrowingTaskGroup(of: MarginPerAssetResult.self) { group in
+            for symbol in symbols {
+                let asset = String(symbol.dropLast(4))  // strip "USDT"
+                let lastTradeId = existingSync[symbol]
+                let startFromId = lastTradeId.map { $0 + 1 }
 
-            do {
-                let assetTrades = try await fetchMarginTradesWithRetry(
-                    apiClient: apiClient,
-                    symbol: symbol,
-                    fromId: startFromId,
-                    isIsolated: true
-                )
-
-                let mapped = assetTrades.map { trade in
-                    MappedTrade(
-                        binanceTradeId: trade.id,
-                        symbol: trade.symbol,
+                group.addTask {
+                    await semaphore.wait()
+                    defer { await semaphore.signal() }
+                    return await Self.fetchMarginTradesForAsset(
+                        apiClient: apiClient,
+                        symbol: symbol,
                         asset: asset,
-                        price: Double(trade.price) ?? 0,
-                        quantity: Double(trade.qty) ?? 0,
-                        quoteQuantity: Double(trade.quoteQty) ?? 0,
-                        commission: Double(trade.commission) ?? 0,
-                        commissionAsset: trade.commissionAsset,
-                        timestamp: Date(timeIntervalSince1970: Double(trade.time) / 1000),
-                        isBuyer: trade.isBuyer,
-                        orderId: trade.orderId
+                        fromId: startFromId,
+                        isIsolated: true
                     )
                 }
-                allTrades.append(contentsOf: mapped)
+            }
 
-                if let lastTrade = assetTrades.last {
+            for try await result in group {
+                allTrades.append(contentsOf: result.trades)
+                if let lastTradeId = result.lastTradeId {
                     allSyncUpdates.append(SyncUpdate(
-                        symbol: symbol,
-                        lastTradeId: lastTrade.id,
+                        symbol: result.symbol,
+                        lastTradeId: lastTradeId,
                         syncDate: Date()
                     ))
                 }
-
-                logger.info("Isolated-margin: fetched \(assetTrades.count) trades for \(symbol)")
-            } catch {
-                logger.error("Isolated-margin: failed to fetch trades for \(symbol): \(error)")
-                continue
-            }
-
-            if index < symbols.count - 1 {
-                try? await Task.sleep(for: interRequestDelay)
             }
         }
 
@@ -264,62 +200,59 @@ extension MarginTradeImportService {
         )
     }
 
-    // MARK: - Retry
+    // MARK: - Trade Fetching
 
+    private struct MarginPerAssetResult: Sendable {
+        let symbol: String
+        let asset: String
+        let trades: [MappedTrade]
+        let lastTradeId: Int64?
+    }
 
-    /// Fetches all margin trades for a symbol with automatic pagination and rate-limit retry.
-    private static func fetchMarginTradesWithRetry(
+    private static func fetchMarginTradesForAsset(
         apiClient: BinanceAPIClient,
         symbol: String,
+        asset: String,
         fromId: Int64?,
         isIsolated: Bool
-    ) async throws -> [BinanceMarginTrade] {
-        for attempt in 0..<maxRateLimitRetries {
-            do {
-                return try await fetchMarginTradesWithPagination(
-                    apiClient: apiClient,
-                    symbol: symbol,
-                    fromId: fromId,
-                    isIsolated: isIsolated
-                )
-            } catch let error as BinanceError {
-                switch error {
-                case .rateLimited(let retryAfterSeconds):
-                    if attempt < maxRateLimitRetries - 1 {
-                        let delayMs = retryAfterSeconds.map { $0 * 1000 }
-                            ?? [500, 1500, 3000][attempt]
-                        logger.warning(
-                            "Rate limited fetching \(symbol) (isolated=\(isIsolated)), retrying in \(delayMs)ms (attempt \(attempt + 1)/\(maxRateLimitRetries))"
-                        )
-                        try? await Task.sleep(for: .milliseconds(delayMs))
-                    } else {
-                        logger.error(
-                            "Rate limited fetching \(symbol) after \(maxRateLimitRetries) retries, skipping"
-                        )
-                        throw error
-                    }
-                case .invalidCredentials, .noCredentialsConfigured:
-                    throw error
-                default:
-                    if attempt < maxRateLimitRetries - 1 {
-                        let backoff = [500, 1500, 3000][min(attempt, 2)]
-                        logger.warning(
-                            "Error fetching \(symbol): \(error), retrying in \(backoff)ms"
-                        )
-                        try? await Task.sleep(for: .milliseconds(backoff))
-                    } else {
-                        throw error
-                    }
-                }
-            } catch {
-                if attempt < maxRateLimitRetries - 1 {
-                    try? await Task.sleep(for: .milliseconds(500))
-                } else {
-                    throw error
-                }
-            }
+    ) async -> MarginPerAssetResult {
+        let assetTrades: [BinanceMarginTrade]
+        do {
+            assetTrades = try await fetchMarginTradesWithPagination(
+                apiClient: apiClient,
+                symbol: symbol,
+                fromId: fromId,
+                isIsolated: isIsolated
+            )
+        } catch {
+            logger.warning("Failed to fetch trades for \(symbol): \(error), skipping")
+            return MarginPerAssetResult(symbol: symbol, asset: asset, trades: [], lastTradeId: nil)
         }
-        return []
+
+        let mapped = assetTrades.map { trade in
+            MappedTrade(
+                binanceTradeId: trade.id,
+                symbol: trade.symbol,
+                asset: asset,
+                price: Double(trade.price) ?? 0,
+                quantity: Double(trade.qty) ?? 0,
+                quoteQuantity: Double(trade.quoteQty) ?? 0,
+                commission: Double(trade.commission) ?? 0,
+                commissionAsset: trade.commissionAsset,
+                timestamp: Date(timeIntervalSince1970: Double(trade.time) / 1000),
+                isBuyer: trade.isBuyer,
+                orderId: trade.orderId
+            )
+        }
+
+        logger.info("Fetched \(assetTrades.count) trades for \(symbol) (isolated=\(isIsolated))")
+
+        return MarginPerAssetResult(
+            symbol: symbol,
+            asset: asset,
+            trades: mapped,
+            lastTradeId: assetTrades.last?.id
+        )
     }
 
     /// Fetches all margin trades for a single symbol with automatic pagination.

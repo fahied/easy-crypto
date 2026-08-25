@@ -6,7 +6,7 @@ advance:
   primary_component: "core-services"
   components: ["core-services", "portfolio"]
   started_at: "2026-08-24T00:00:00Z"
-  implementation_completed_at: ~
+  implementation_completed_at: "2026-08-25T15:14:00Z"
   review_time_estimate_minutes: 15
   review_time_actual_minutes: ~
   pr_links: []
@@ -195,14 +195,33 @@ let activePairs = isolatedAccount.assets
 
 *(populated during implementation)*
 
+## Changes Made
+
+### 2026-08-25 - tidy: Remove omitZeroBalances from spot account endpoint
+- EasyCrypto/Core/Services/BinanceAPIClient.swift: Removed `omitZeroBalances=true` param from
+  `fetchAccount` (line 495). `/api/v3/account` now returns ALL assets including zero-balance.
+- EasyCrypto/Core/Services/TradeImportService.swift: Already includes all non-USDT assets
+  (no balance threshold filter was present — threshold removal happened in prior session).
+
+### 2026-08-25 - fix: Use static asset lists for margin trade sync
+- EasyCrypto/Core/Services/MarginTradeImportService.swift: Replaced API-based asset
+  discovery (`fetchMarginAccount`, `fetchIsolatedMarginAccount`) with static lists:
+  - Cross-margin: `["SOL", "DEXE", "MMT", "BANK", "LTC", "XRP"]`
+  - Isolated-margin: `["DEXE", "MMT", "XRP"]`
+- EasyCrypto/Core/Services/MarginTradeImportService.swift: Removed retry logic
+  (`fetchMarginTradesWithRetry`) per user request. Per-symbol errors are caught
+  internally and logged as warnings instead of propagating to the task group.
+- EasyCrypto/Features/Holdings/HoldingsProcessor.swift: Already uses static-list-backed
+  margin sync via `marginTradeImportService.sync(mode, syncMap)`.
+
 ## Check for Understanding
 
 1. Why does `omitZeroBalances=true` on `/api/v3/account` cause fully sold positions
    to disappear from asset discovery, and how does removing it fix the issue?
 2. How does the union of static list + all-balance-assets + existingSync ensure
    completeness without requiring per-symbol scanning of `/api/v3/myTrades`?
-3. Why is it safe to remove the `free + locked > 0.000001` threshold — what handles
-   the cost of syncing zero-balance assets that have no new trades?
-4. How do the margin endpoints (`/sapi/v1/margin/account` and `/sapi/v1/margin/isolated/account`)
-   differ from the spot endpoint regarding zero-balance filtering, and why do both
-   need the threshold removed?
+3. For margin trading, why were static asset lists (`knownCrossMarginAssets` /
+   `knownIsolatedMarginAssets`) introduced instead of discovering symbols via
+   the `/sapi/v1/margin/account` and `/sapi/v1/margin/isolated/account` endpoints?
+4. Why was retry logic removed from `fetchMarginTradesWithRetry`, and how does the
+   per-symbol error catch pattern in `fetchMarginTradesForAsset` handle failing symbols?

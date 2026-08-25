@@ -145,23 +145,14 @@ class HoldingsProcessor: Processor {
         let trades = try fetchTrades(matching: mode)
         let tradesByAsset = Dictionary(grouping: trades) { $0.asset }
 
-        var fifoByAsset: [String: FIFOResult] = [:]
-        var marginAdjustedPnLByAsset: [String: Double] = [:]
-
-        for (asset, assetTrades) in tradesByAsset {
-            let assetFifoTrades = assetTrades.map(Self.toFIFOTrade)
-            let result = fifoCalculator.calculate(assetFifoTrades)
-            fifoByAsset[asset] = result
-        }
+        let fifoByAsset = try await computeFIFOConcurrently(tradesByAsset)
 
         let (quantities, perAssetInterest) = try await loadMarginQuantities(mode: mode)
 
-        for (asset, assetTrades) in tradesByAsset {
-            let assetFifoTrades = assetTrades.map(Self.toFIFOTrade)
-            let interest = perAssetInterest[asset] ?? 0
-            let marginResult = fifoCalculator.calculateMargin(assetFifoTrades, [asset: interest])
-            marginAdjustedPnLByAsset[asset] = marginResult.marginAdjustedRealizedPnL
-        }
+        let marginAdjustedPnLByAsset = try await computeMarginAdjustedPnLConcurrently(
+            tradesByAsset: tradesByAsset,
+            perAssetInterest: perAssetInterest
+        )
 
         let prices = try await priceService.fetchPrices(PriceCatalog.usdtSymbols(from: Array(quantities.keys), exclude: "USDT"))
 
@@ -177,6 +168,52 @@ class HoldingsProcessor: Processor {
     }
 
     // MARK: - Quantity Loading
+
+    private func computeFIFOConcurrently(
+        _ tradesByAsset: [String: [Trade]]
+    ) async throws -> [String: FIFOResult] {
+        return try await withThrowingTaskGroup(of: (String, FIFOResult).self) { group in
+            for (asset, assetTrades) in tradesByAsset {
+                group.addTask {
+                    let result = self.fifoCalculator.calculate(
+                        assetTrades.map(Self.toFIFOTrade)
+                    )
+                    return (asset, result)
+                }
+            }
+
+            var result: [String: FIFOResult] = [:]
+            for try await (asset, fifo) in group {
+                result[asset] = fifo
+            }
+            return result
+        }
+    }
+
+    private func computeMarginAdjustedPnLConcurrently(
+        tradesByAsset: [String: [Trade]],
+        perAssetInterest: [String: Double]
+    ) async throws -> [String: Double] {
+
+        return try await withThrowingTaskGroup(of: (String, Double).self) { group in
+            for (asset, assetTrades) in tradesByAsset {
+                let interest = perAssetInterest[asset] ?? 0
+                group.addTask {
+                    let marginResult = self.fifoCalculator.calculateMargin(
+                        assetTrades.map(Self.toFIFOTrade),
+                        [asset: interest]
+                    )
+                    return (asset, marginResult.marginAdjustedRealizedPnL)
+                }
+            }
+
+            var result: [String: Double] = [:]
+            for try await (asset, pnl) in group {
+                result[asset] = pnl
+            }
+            return result
+        }
+    }
 
     /// Spot quantities live in `AccountBalance`, which only this path writes — so an
     /// empty table has to fall through to the exchange even on a persisted-only load.

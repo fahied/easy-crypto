@@ -674,4 +674,28 @@ struct LiveClientTests {
             }
         }
     }
+
+    @Test("When fetchAccount builds request, then URL does not include omitZeroBalances")
+    func fetchAccountDoesNotIncludeOmitZeroBalances() async throws {
+        var capturedQuery: String?
+        MockURLProtocol.requestHandler = { request in
+            if request.url?.path == "/api/v3/time" {
+                let response = HTTPURLResponse(
+                    url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+                )!
+                return (response, Data(#"{"serverTime":1700000000000}"#.utf8))
+            }
+            capturedQuery = request.url?.query
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+            return (response, Data(#"{"balances":[]}"#.utf8))
+        }
+        let client = BinanceAPIClient.live(keychain: testKeychain, session: makeMockSession())
+        _ = try await client.fetchAccount()
+
+        let query = try #require(capturedQuery)
+        #expect(!query.contains("omitZeroBalances"),
+            "fetchAccount should not include omitZeroBalances param")
+    }
 }

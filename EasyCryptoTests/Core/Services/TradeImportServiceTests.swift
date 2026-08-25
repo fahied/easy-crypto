@@ -302,6 +302,76 @@ struct StaticAssetListTests {
         #expect(result.mappedTrades.isEmpty)
         #expect(result.syncUpdates.isEmpty)
     }
+
+    @Test("Zero-balance asset from account response is included in sync set")
+    func zeroBalanceAssetIsIncluded() async throws {
+        let client = BinanceAPIClient(
+            fetchAccount: {
+                [
+                    makeBalance("BTC"),       // normal balance
+                    BinanceBalance(asset: "ETH", free: "0", locked: "0"),  // zero balance
+                ]
+            },
+            fetchMyTrades: { symbol, _ in
+                [makeBinanceTrade(id: 1, symbol: symbol)]
+            },
+            fetchTickerPrices: { _ in [] },
+            fetchKlines: { _, _, _ in [] },
+            fetchMarginAccount: {
+                BinanceMarginAccount(
+                    marginLevel: "0", totalAssetOfBtc: "0",
+                    totalLiabilityOfBtc: "0", totalNetAssetOfBtc: "0",
+                    totalAsset: "0", totalLiability: "0",
+                    totalNetAsset: "0", maxBorrowable: "0",
+                    maintained: nil, userAssets: []
+                )
+            },
+            fetchMarginMyTrades: { _, _, _ in [] },
+            fetchMarginOpenOrders: { _, _ in [] },
+            fetchMarginAllAssets: { [] },
+            fetchIsolatedMarginTransfers: { _ in [] }
+        )
+        let service = TradeImportService.live(apiClient: client)
+        let result = try await service.sync([:])
+
+        let symbols = Set(result.mappedTrades.map(\.symbol))
+        #expect(symbols.contains("ETHUSDT"), "ETH with zero balance should still be synced")
+        #expect(symbols.contains("BTCUSDT"), "BTC with normal balance should be synced")
+    }
+
+    @Test("Asset with dust balance is included in sync set")
+    func dustBalanceAssetIsIncluded() async throws {
+        let client = BinanceAPIClient(
+            fetchAccount: {
+                [
+                    BinanceBalance(asset: "SHIB", free: "0.0000005", locked: "0"),
+                ]
+            },
+            fetchMyTrades: { symbol, _ in
+                [makeBinanceTrade(id: 1, symbol: symbol)]
+            },
+            fetchTickerPrices: { _ in [] },
+            fetchKlines: { _, _, _ in [] },
+            fetchMarginAccount: {
+                BinanceMarginAccount(
+                    marginLevel: "0", totalAssetOfBtc: "0",
+                    totalLiabilityOfBtc: "0", totalNetAssetOfBtc: "0",
+                    totalAsset: "0", totalLiability: "0",
+                    totalNetAsset: "0", maxBorrowable: "0",
+                    maintained: nil, userAssets: []
+                )
+            },
+            fetchMarginMyTrades: { _, _, _ in [] },
+            fetchMarginOpenOrders: { _, _ in [] },
+            fetchMarginAllAssets: { [] },
+            fetchIsolatedMarginTransfers: { _ in [] }
+        )
+        let service = TradeImportService.live(apiClient: client)
+        let result = try await service.sync([:])
+
+        let symbols = Set(result.mappedTrades.map(\.symbol))
+        #expect(symbols.contains("SHIBUSDT"), "SHIB with dust balance should still be synced")
+    }
 }
 
 // MARK: - Trade Mapping Tests
@@ -780,6 +850,82 @@ struct RateLimitRetryTests {
         let symbols = Set(result.mappedTrades.map(\.symbol))
         #expect(symbols.contains("BTCUSDT"))
         #expect(symbols.contains("ETHUSDT"))
+    }
+}
+
+// MARK: - Concurrency Tests
+
+@Suite("Given a trade import service with concurrent fetching")
+struct ConcurrentFetchTests {
+
+    @Test("When multiple assets have trades, then all trades are collected concurrently")
+    func concurrentFetchCollectsAllTrades() async throws {
+        let client = makeClient(
+            balances: [makeBalance("BTC"), makeBalance("ETH"), makeBalance("SOL")],
+            tradesForSymbol: { symbol, _ in
+                [makeBinanceTrade(id: 1, symbol: symbol)]
+            }
+        )
+        let service = TradeImportService.live(apiClient: client)
+        let result = try await service.sync([:])
+
+        #expect(result.mappedTrades.count == 3)
+        let symbols = Set(result.mappedTrades.map(\.symbol))
+        #expect(symbols.contains("BTCUSDT"))
+        #expect(symbols.contains("ETHUSDT"))
+        #expect(symbols.contains("SOLUSDT"))
+    }
+
+    @Test("When one symbol errors, others still return trades")
+    func concurrentFetchIsFaultTolerant() async throws {
+        let client = BinanceAPIClient(
+            fetchAccount: { [makeBalance("BTC"), makeBalance("ETH")] },
+            fetchMyTrades: { symbol, _ in
+                if symbol == "BTCUSDT" {
+                    throw BinanceError.apiError(code: -1121, message: "Invalid symbol")
+                }
+                return [makeBinanceTrade(id: 1, symbol: symbol)]
+            },
+            fetchTickerPrices: { _ in [] },
+            fetchKlines: { _, _, _ in [] },
+            fetchMarginAccount: {
+                BinanceMarginAccount(
+                    marginLevel: "0", totalAssetOfBtc: "0",
+                    totalLiabilityOfBtc: "0", totalNetAssetOfBtc: "0",
+                    totalAsset: "0", totalLiability: "0",
+                    totalNetAsset: "0", maxBorrowable: "0",
+                    maintained: nil, userAssets: []
+                )
+            },
+            fetchMarginMyTrades: { _, _, _ in [] },
+            fetchMarginOpenOrders: { _, _ in [] },
+            fetchMarginAllAssets: { [] },
+            fetchIsolatedMarginTransfers: { _ in [] }
+        )
+        let service = TradeImportService.live(apiClient: client)
+        let result = try await service.sync([:])
+
+        #expect(result.mappedTrades.count == 1)
+        #expect(result.mappedTrades.first?.symbol == "ETHUSDT")
+    }
+
+    @Test("When a symbol has no trades, it produces no sync update")
+    func noTradesProducesNoSyncUpdate() async throws {
+        var callCount = Locked(0)
+        let client = makeClient(
+            balances: [makeBalance("BTC")],
+            tradesForSymbol: { symbol, _ in
+                callCount.value += 1
+                return symbol == "BTCUSDT"
+                    ? [makeBinanceTrade(id: 1, symbol: symbol)]
+                    : []
+            }
+        )
+        let service = TradeImportService.live(apiClient: client)
+        let result = try await service.sync([:])
+
+        #expect(result.syncUpdates.count == 1)
+        #expect(result.syncUpdates.first?.symbol == "BTCUSDT")
     }
 }
 

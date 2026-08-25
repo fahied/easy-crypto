@@ -66,6 +66,7 @@ extension TradeImportService {
         category: "sync"
     )
 
+    nonisolated private static let maxConcurrentFetches = 4
     nonisolated private static let interRequestDelay: Duration = .milliseconds(300)
 
     /// Maximum retries per symbol when a 429 rate-limit response is received.
@@ -81,15 +82,10 @@ extension TradeImportService {
                     .filter { $0.hasSuffix("USDT") }
                     .map { String($0.dropLast(4)) }
 
-                let balanceThreshold: Double = 0.000001
                 let balanceDiscoveredAssets = Set(
                     balances
                         .filter { $0.asset != "USDT" }
-                        .compactMap { balance in
-                            let free = Double(balance.free) ?? 0
-                            let locked = Double(balance.locked) ?? 0
-                            return free + locked > balanceThreshold ? balance.asset : nil
-                        }
+                        .compactMap { $0.asset }
                 )
 
                 // Static list is always included — closed positions must stay synced.
@@ -103,60 +99,49 @@ extension TradeImportService {
 
                 guard !assets.isEmpty else {
                     logger.info("No non-USDT assets found in account")
-                    return .empty
+                    return TradeImportResult.empty
                 }
 
                 logger.info("Discovered \(assets.count) assets: \(assets.joined(separator: ", "))")
 
-                var allTrades: [MappedTrade] = []
-                var syncUpdates: [SyncUpdate] = []
+                let semaphore = AsyncSemaphore(bitPattern: Self.maxConcurrentFetches)
 
-                for (index, asset) in assets.enumerated() {
-                    let symbol = "\(asset)USDT"
-                    let lastTradeId = existingSync[symbol]
-                    let startFromId = lastTradeId.map { $0 + 1 }
+                let allResults: [PerAssetResult] = try await withThrowingTaskGroup(
+                    of: PerAssetResult.self,
+                    returning: [PerAssetResult].self
+                ) { group in
+                    for asset in assets {
+                        let symbol = "\(asset)USDT"
+                        let lastTradeId = existingSync[symbol]
+                        let startFromId = lastTradeId.map { $0 + 1 }
 
-                    do {
-                        let assetTrades = try await fetchTradesWithRetry(
-                            apiClient: apiClient,
-                            symbol: symbol,
-                            fromId: startFromId
-                        )
-
-                        let mapped = assetTrades.map { trade in
-                            MappedTrade(
-                                binanceTradeId: trade.id,
-                                symbol: trade.symbol,
+                        group.addTask {
+                            await semaphore.wait()
+                            let result = try await Self.fetchTradesForAsset(
+                                apiClient: apiClient,
                                 asset: asset,
-                                price: Double(trade.price) ?? 0,
-                                quantity: Double(trade.qty) ?? 0,
-                                quoteQuantity: Double(trade.quoteQty) ?? 0,
-                                commission: Double(trade.commission) ?? 0,
-                                commissionAsset: trade.commissionAsset,
-                                timestamp: Date(timeIntervalSince1970: Double(trade.time) / 1000),
-                                isBuyer: trade.isBuyer,
-                                orderId: trade.orderId
+                                fromId: startFromId
                             )
+                            await semaphore.signal()
+                            return result
                         }
-                        allTrades.append(contentsOf: mapped)
-
-                        if let lastTrade = assetTrades.last {
-                            syncUpdates.append(SyncUpdate(
-                                symbol: symbol,
-                                lastTradeId: lastTrade.id,
-                                syncDate: Date()
-                            ))
-                        }
-
-                        logger.info("Fetched \(assetTrades.count) trades for \(symbol)")
-                    } catch {
-                        logger.error("Failed to fetch trades for \(symbol): \(error)")
-                        continue
                     }
 
-                    if index < assets.count - 1 {
-                        try? await Task.sleep(for: interRequestDelay)
+                    var collected: [PerAssetResult] = []
+                    for try await r in group {
+                        collected.append(r)
                     }
+                    return collected
+                }
+
+                let allTrades = allResults.flatMap(\.trades)
+                let syncUpdates = allResults.compactMap { r -> SyncUpdate? in
+                    guard let maxId = r.trades.map(\.binanceTradeId).max() else { return nil }
+                    return SyncUpdate(
+                        symbol: "\(r.asset)USDT",
+                        lastTradeId: maxId,
+                        syncDate: Date()
+                    )
                 }
 
                 return TradeImportResult(
@@ -164,6 +149,50 @@ extension TradeImportService {
                     syncUpdates: syncUpdates
                 )
             }
+        )
+    }
+
+    // MARK: - Per-Asset Fetch
+
+    private struct PerAssetResult: Sendable {
+        let asset: String
+        let trades: [MappedTrade]
+        let lastTradeId: Int64?
+    }
+
+    private static func fetchTradesForAsset(
+        apiClient: BinanceAPIClient,
+        asset: String,
+        fromId: Int64?
+    ) async throws -> PerAssetResult {
+        let assetTrades = try await fetchTradesWithRetry(
+            apiClient: apiClient,
+            symbol: "\(asset)USDT",
+            fromId: fromId
+        )
+
+        let mapped = assetTrades.map { trade in
+            MappedTrade(
+                binanceTradeId: trade.id,
+                symbol: trade.symbol,
+                asset: asset,
+                price: Double(trade.price) ?? 0,
+                quantity: Double(trade.qty) ?? 0,
+                quoteQuantity: Double(trade.quoteQty) ?? 0,
+                commission: Double(trade.commission) ?? 0,
+                commissionAsset: trade.commissionAsset,
+                timestamp: Date(timeIntervalSince1970: Double(trade.time) / 1000),
+                isBuyer: trade.isBuyer,
+                orderId: trade.orderId
+            )
+        }
+
+        logger.info("Fetched \(assetTrades.count) trades for \(asset)USDT")
+
+        return PerAssetResult(
+            asset: asset,
+            trades: mapped,
+            lastTradeId: assetTrades.last?.id
         )
     }
 
@@ -237,6 +266,38 @@ extension TradeImportService {
         }
 
         return allTrades
+    }
+}
+
+// MARK: - Async Semaphore
+
+/// Lightweight async semaphore built on continuations, usable from `Sendable` closures.
+actor AsyncSemaphore: @unchecked Sendable {
+    private let maximum: Int
+    private var available: Int
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(bitPattern: Int) {
+        self.maximum = bitPattern
+        self.available = bitPattern
+    }
+
+    func wait() async {
+        if available > 0 {
+            available -= 1
+            return
+        }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    func signal() {
+        if let next = waiters.popLast() {
+            next.resume(returning: ())
+        } else {
+            available = min(available + 1, maximum)
+        }
     }
 }
 
