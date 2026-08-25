@@ -246,7 +246,7 @@ struct SettingsClearTests {
 
 // MARK: - Trading Mode
 
-@Suite("Given a SettingsProcessor with trading mode")
+@Suite("Given a SettingsProcessor with trading mode", .serialized)
 struct SettingsTradingModeTests {
 
     @Test("When setting trading mode, then state is updated")

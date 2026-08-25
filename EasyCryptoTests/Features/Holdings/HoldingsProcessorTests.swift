@@ -171,6 +171,9 @@ struct HoldingsLoadTests {
         let container = try makeContainer()
         try seedTrades(in: container) // BTC traded 1.0, ETH traded 5.0
         let context = ModelContext(container)
+        // seedTrades inserts BTC and ETH balances; delete them all and insert only
+        // the test balances so HoldingsProcessor has the authoritative set.
+        try context.delete(model: AccountBalance.self)
         context.insert(AccountBalance(asset: "BTC", quantity: 0.6))
         context.insert(AccountBalance(asset: "USDT", quantity: 1000))
         try context.save()

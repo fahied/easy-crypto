@@ -43,7 +43,7 @@ nonisolated struct TradeImportResult: Sendable {
 nonisolated struct TradeImportService: Sendable {
     /// Performs full trade sync: discovers assets, fetches trades with pagination.
     /// `existingSync` maps symbol (e.g. "BTCUSDT") -> lastTradeId for incremental sync.
-    var sync: @Sendable (_ existingSync: [String: Int64]) async throws -> TradeImportResult
+    var sync: (_ existingSync: [String: Int64]) async throws -> TradeImportResult
 }
 
 // MARK: - Static Asset List
@@ -67,9 +67,6 @@ extension TradeImportService {
     )
 
     nonisolated private static let interRequestDelay: Duration = .milliseconds(300)
-
-    /// Maximum retries per symbol when a 429 rate-limit response is received.
-    nonisolated private static let maxRateLimitRetries = 3
 
     static func live(
         apiClient: BinanceAPIClient
@@ -117,7 +114,7 @@ extension TradeImportService {
                     let startFromId = lastTradeId.map { $0 + 1 }
 
                     do {
-                        let assetTrades = try await fetchTradesWithRetry(
+                        let assetTrades = try await fetchTradesWithPagination(
                             apiClient: apiClient,
                             symbol: symbol,
                             fromId: startFromId
@@ -165,58 +162,6 @@ extension TradeImportService {
                 )
             }
         )
-    }
-
-    private static func fetchTradesWithRetry(
-        apiClient: BinanceAPIClient,
-        symbol: String,
-        fromId: Int64?
-    ) async throws -> [BinanceTrade] {
-        for attempt in 0..<maxRateLimitRetries {
-            do {
-                return try await fetchTradesWithPagination(
-                    apiClient: apiClient,
-                    symbol: symbol,
-                    fromId: fromId
-                )
-            } catch let error as BinanceError {
-                switch error {
-                case .rateLimited(let retryAfterSeconds):
-                    if attempt < maxRateLimitRetries - 1 {
-                        let delayMs = retryAfterSeconds.map { $0 * 1000 }
-                            ?? [500, 1500, 3000][attempt]
-                        logger.warning(
-                            "Rate limited fetching \(symbol), retrying in \(delayMs)ms (attempt \(attempt + 1)/\(maxRateLimitRetries))"
-                        )
-                        try? await Task.sleep(for: .milliseconds(delayMs))
-                    } else {
-                        logger.error(
-                            "Rate limited fetching \(symbol) after \(maxRateLimitRetries) retries, skipping"
-                        )
-                        throw error
-                    }
-                case .invalidCredentials, .noCredentialsConfigured:
-                    throw error
-                default:
-                    if attempt < maxRateLimitRetries - 1 {
-                        let backoff = [500, 1500, 3000][min(attempt, 2)]
-                        logger.warning(
-                            "Error fetching \(symbol): \(error), retrying in \(backoff)ms"
-                        )
-                        try? await Task.sleep(for: .milliseconds(backoff))
-                    } else {
-                        throw error
-                    }
-                }
-            } catch {
-                if attempt < maxRateLimitRetries - 1 {
-                    try? await Task.sleep(for: .milliseconds(500))
-                } else {
-                    throw error
-                }
-            }
-        }
-        return []
     }
 
     private static func fetchTradesWithPagination(

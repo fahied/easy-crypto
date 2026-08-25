@@ -264,11 +264,12 @@ class PortfolioProcessor: Processor {
         let isolatedBalances = (try? await marginBalanceService.fetchAllIsolatedMarginBalances()) ?? []
         guard !trades.isEmpty || !isolatedBalances.isEmpty else { return [] }
 
+        let baseBalances = isolatedBalances.filter { $0.role == .base }
         let tradesByAsset = Dictionary(grouping: trades.map(Self.toFIFOTrade)) { $0.asset }
         // An asset appears once per pair it trades in, so sum rather than pick one row.
-        let netAssetByAsset = Dictionary(isolatedBalances.map { ($0.asset, $0.netAsset) }, uniquingKeysWith: +)
-        let interestByAsset = Dictionary(isolatedBalances.map { ($0.asset, $0.interest) }, uniquingKeysWith: +)
-        let borrowedByAsset = Dictionary(isolatedBalances.map { ($0.asset, $0.borrowed) }, uniquingKeysWith: +)
+        let netAssetByAsset = Dictionary(baseBalances.map { ($0.asset, $0.netAsset) }, uniquingKeysWith: +)
+        let interestByAsset = Dictionary(baseBalances.map { ($0.asset, $0.interest) }, uniquingKeysWith: +)
+        let borrowedByAsset = Dictionary(baseBalances.map { ($0.asset, $0.borrowed) }, uniquingKeysWith: +)
 
         let assets = Set(tradesByAsset.keys).union(netAssetByAsset.keys)
         let prices = try await fetchPrices(for: Array(assets))

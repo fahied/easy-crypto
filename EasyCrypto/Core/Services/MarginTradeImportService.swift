@@ -23,7 +23,7 @@ nonisolated struct MarginTradeImportService: Sendable {
     ///       → per-symbol lastTradeId.
     ///
     /// - Returns: `TradeImportResult` with mapped trades and sync metadata updates.
-    var sync: @Sendable (_ mode: TradingMode, _ existingSync: [String: Int64]) async throws -> TradeImportResult
+    var sync: (_ mode: TradingMode, _ existingSync: [String: Int64]) async throws -> TradeImportResult
 }
 
 // MARK: - Live Implementation
@@ -35,9 +35,6 @@ extension MarginTradeImportService {
     )
 
     nonisolated private static let interRequestDelay: Duration = .milliseconds(300)
-
-    /// Maximum retries per symbol when a 429 rate-limit response is received.
-    nonisolated private static let maxRateLimitRetries = 3
 
     static func live(apiClient: BinanceAPIClient) -> MarginTradeImportService {
         MarginTradeImportService(
@@ -102,12 +99,15 @@ extension MarginTradeImportService {
         var allTrades: [MappedTrade] = []
         var allSyncUpdates: [SyncUpdate] = []
 
+        let startFromId = existingSync["cross"].map { $0 + 1 }
+        var maxTradeId: Int64?
+        var hasFetched = false
+
         for (index, asset) in assets.enumerated() {
             let symbol = "\(asset)USDT"
-            let startFromId = existingSync[symbol].map { $0 + 1 }
 
             do {
-                let assetTrades = try await fetchMarginTradesWithRetry(
+                let assetTrades = try await fetchMarginTradesWithPagination(
                     apiClient: apiClient,
                     symbol: symbol,
                     fromId: startFromId,
@@ -131,12 +131,9 @@ extension MarginTradeImportService {
                 }
                 allTrades.append(contentsOf: mapped)
 
-                if let lastTrade = assetTrades.last {
-                    allSyncUpdates.append(SyncUpdate(
-                        symbol: symbol,
-                        lastTradeId: lastTrade.id,
-                        syncDate: Date()
-                    ))
+                if let lastTrade = assetTrades.last, lastTrade.id > (maxTradeId ?? 0) {
+                    maxTradeId = lastTrade.id
+                    hasFetched = true
                 }
 
                 logger.info("Cross-margin: fetched \(assetTrades.count) trades for \(symbol)")
@@ -148,6 +145,14 @@ extension MarginTradeImportService {
             if index < assets.count - 1 {
                 try? await Task.sleep(for: interRequestDelay)
             }
+        }
+
+        if hasFetched, let lastId = maxTradeId {
+            allSyncUpdates.append(SyncUpdate(
+                symbol: "cross",
+                lastTradeId: lastId,
+                syncDate: Date()
+            ))
         }
 
         return TradeImportResult(
@@ -215,7 +220,7 @@ extension MarginTradeImportService {
 
 
             do {
-                let assetTrades = try await fetchMarginTradesWithRetry(
+                let assetTrades = try await fetchMarginTradesWithPagination(
                     apiClient: apiClient,
                     symbol: symbol,
                     fromId: startFromId,
@@ -264,63 +269,7 @@ extension MarginTradeImportService {
         )
     }
 
-    // MARK: - Retry
-
-
-    /// Fetches all margin trades for a symbol with automatic pagination and rate-limit retry.
-    private static func fetchMarginTradesWithRetry(
-        apiClient: BinanceAPIClient,
-        symbol: String,
-        fromId: Int64?,
-        isIsolated: Bool
-    ) async throws -> [BinanceMarginTrade] {
-        for attempt in 0..<maxRateLimitRetries {
-            do {
-                return try await fetchMarginTradesWithPagination(
-                    apiClient: apiClient,
-                    symbol: symbol,
-                    fromId: fromId,
-                    isIsolated: isIsolated
-                )
-            } catch let error as BinanceError {
-                switch error {
-                case .rateLimited(let retryAfterSeconds):
-                    if attempt < maxRateLimitRetries - 1 {
-                        let delayMs = retryAfterSeconds.map { $0 * 1000 }
-                            ?? [500, 1500, 3000][attempt]
-                        logger.warning(
-                            "Rate limited fetching \(symbol) (isolated=\(isIsolated)), retrying in \(delayMs)ms (attempt \(attempt + 1)/\(maxRateLimitRetries))"
-                        )
-                        try? await Task.sleep(for: .milliseconds(delayMs))
-                    } else {
-                        logger.error(
-                            "Rate limited fetching \(symbol) after \(maxRateLimitRetries) retries, skipping"
-                        )
-                        throw error
-                    }
-                case .invalidCredentials, .noCredentialsConfigured:
-                    throw error
-                default:
-                    if attempt < maxRateLimitRetries - 1 {
-                        let backoff = [500, 1500, 3000][min(attempt, 2)]
-                        logger.warning(
-                            "Error fetching \(symbol): \(error), retrying in \(backoff)ms"
-                        )
-                        try? await Task.sleep(for: .milliseconds(backoff))
-                    } else {
-                        throw error
-                    }
-                }
-            } catch {
-                if attempt < maxRateLimitRetries - 1 {
-                    try? await Task.sleep(for: .milliseconds(500))
-                } else {
-                    throw error
-                }
-            }
-        }
-        return []
-    }
+    // MARK: - Pagination
 
     /// Fetches all margin trades for a single symbol with automatic pagination.
     private static func fetchMarginTradesWithPagination(

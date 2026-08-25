@@ -247,7 +247,7 @@ struct TradeHistoryAggregationTests {
         context.insert(Trade(
             binanceTradeId: 1, symbol: "BTCUSDT", asset: "BTC",
             price: 50000, quantity: 1.0, quoteQuantity: 50000,
-            commission: 5, commissionAsset: "BTC",
+            commission: 0.001, commissionAsset: "BTC",
             timestamp: Date(timeIntervalSince1970: 1_700_000_000),
             isBuyer: true, orderId: 100, tradingMode: .crossMargin
         ))
@@ -284,7 +284,7 @@ struct TradeHistoryAggregationTests {
         #expect(sellDetails.count == 1)
         let detail = sellDetails[0]
         #expect(detail.tradingMode == .spot)
-        #expect(detail.borrowingFee == nil)
+        #expect(detail.borrowingFee == 0.0)
         #expect(detail.marginAdjustedPnL == nil)
     }
 }
