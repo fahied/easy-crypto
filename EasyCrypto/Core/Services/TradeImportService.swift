@@ -77,32 +77,14 @@ extension TradeImportService {
     ) -> TradeImportService {
         TradeImportService(
             sync: { existingSync in
-                let balances = try await apiClient.fetchAccount()
-                let previouslySyncedAssets = existingSync.keys
-                    .filter { $0.hasSuffix("USDT") }
-                    .map { String($0.dropLast(4)) }
-
-                let balanceDiscoveredAssets = Set(
-                    balances
-                        .filter { $0.asset != "USDT" }
-                        .compactMap { $0.asset }
-                )
-
-                // Static list is always included — closed positions must stay synced.
-                let staticAssets = Set(Self.knownAssets)
-                let knownAssets = Set(previouslySyncedAssets)
-
-                let assets = Array(
-                    staticAssets.union(balanceDiscoveredAssets).union(knownAssets)
-                )
-                .sorted()
+                let assets = Self.knownAssets
 
                 guard !assets.isEmpty else {
-                    logger.info("No non-USDT assets found in account")
+                    logger.info("No assets to sync")
                     return TradeImportResult.empty
                 }
 
-                logger.info("Discovered \(assets.count) assets: \(assets.joined(separator: ", "))")
+                logger.info("Syncing \(assets.count) static assets")
 
                 let semaphore = AsyncSemaphore(bitPattern: Self.maxConcurrentFetches)
 

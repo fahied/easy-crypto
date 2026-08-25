@@ -82,11 +82,15 @@ class HoldingsProcessor: Processor {
     // MARK: - Aggregated Holdings (Spot + Cross Margin + Isolated Margin)
 
     private func loadAggregatedHoldings(syncFromExchange: Bool) async throws -> PortfolioData {
-        let spotHoldings = try await loadSpotHoldings(usePersistedBalances: !syncFromExchange)
-        let crossHoldings = try await loadMarginHoldings(mode: .crossMargin, syncFromExchange: syncFromExchange)
-        let isolatedHoldings = try await loadMarginHoldings(mode: .isolatedMargin, syncFromExchange: syncFromExchange)
+        async let spotHoldings = loadSpotHoldings(usePersistedBalances: !syncFromExchange)
+        async let crossHoldings = loadMarginHoldings(mode: .crossMargin, syncFromExchange: syncFromExchange)
+        async let isolatedHoldings = loadMarginHoldings(mode: .isolatedMargin, syncFromExchange: syncFromExchange)
 
-        let allHoldings = spotHoldings.holdings + crossHoldings.holdings + isolatedHoldings.holdings
+        let spot = try await spotHoldings
+        let cross = try await crossHoldings
+        let isolated = try await isolatedHoldings
+
+        let allHoldings = spot.holdings + cross.holdings + isolated.holdings
         return PortfolioData(holdings: allHoldings)
     }
 

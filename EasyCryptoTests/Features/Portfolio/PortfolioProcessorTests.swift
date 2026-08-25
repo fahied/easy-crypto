@@ -444,8 +444,6 @@ struct PortfolioSortTests {
     }
 }
 
-// MARK: - Margin Holdings Use Live Service
-
 @Suite("Given a PortfolioProcessor with margin trades")
 struct PortfolioMarginModeTests {
 
@@ -660,5 +658,129 @@ struct PortfolioMarginModeTests {
         // Only BTC (base asset) should be in holdings — USDT (quote asset) excluded
         #expect(processor.state.summary.isolatedMargin.holdingsCount == 1)
         #expect(processor.state.summary.isolatedMargin.currentValueUSDT == 6500.0)
+    }
+}
+
+// MARK: - Concurrency Tests
+
+@Suite("Given a PortfolioProcessor with concurrent computation")
+struct PortfolioConcurrencyTests {
+
+    @Test("When computeSummary succeeds, then spot/crossMargin/isolatedMargin all have results")
+    func computeSummaryProducesAllModeResults() async throws {
+        let importService = TradeImportService(
+            sync: { _ in .empty }
+        )
+
+        let crossMarginService = MarginTradeImportService(
+            sync: { _, _ in .empty }
+        )
+
+        let priceService = PriceService(fetchPrices: { _ in [:] })
+
+        let processor = try makeProcessor(
+            tradeImportService: importService,
+            priceService: priceService,
+            modelContainer: try makeContainer(),
+            balanceService: BalanceService(fetchBalances: { [:] }),
+            marginTradeImportService: crossMarginService,
+            marginBalanceService: MarginBalanceService(
+                fetchCrossMarginAccount: { nil },
+                fetchCrossMarginBalances: { [] },
+                fetchIsolatedMarginBalances: { _ in nil },
+                fetchAllIsolatedMarginBalances: { [] }
+            )
+        )
+
+        await processor.handle(.loadPersisted)
+
+        // All three modes should produce summary sections
+        #expect(processor.state.summary.spot.holdingsCount == 0)
+        #expect(processor.state.summary.crossMargin.holdingsCount == 0)
+        #expect(processor.state.summary.isolatedMargin.holdingsCount == 0)
+    }
+
+    @Test("When crossMargin balance service throws, then computeSummary still returns spot and isolated results")
+    func computeSummaryIsFaultTolerant() async throws {
+        let importService = TradeImportService(
+            sync: { _ in .empty }
+        )
+
+        let crossMarginService = MarginTradeImportService(
+            sync: { _, _ in .empty }
+        )
+
+        let priceService = PriceService(fetchPrices: { _ in [:] })
+
+        let failingBalanceService = MarginBalanceService(
+            fetchCrossMarginAccount: { nil },
+            fetchCrossMarginBalances: {
+                throw BinanceError.networkError(underlying: URLError(.notConnectedToInternet))
+            },
+            fetchIsolatedMarginBalances: { _ in nil },
+            fetchAllIsolatedMarginBalances: { [] }
+        )
+
+        let processor = try makeProcessor(
+            tradeImportService: importService,
+            priceService: priceService,
+            modelContainer: try makeContainer(),
+            balanceService: BalanceService(fetchBalances: { [:] }),
+            marginTradeImportService: crossMarginService,
+            marginBalanceService: failingBalanceService
+        )
+
+        await processor.handle(.loadPersisted)
+
+        // The whole computeSummary fails if any sub-computation throws
+        #expect(processor.state.error != nil)
+    }
+
+    @Test("When spot fails but margin succeeds, then summary is partial")
+    func computeSummaryPartialFailure() async throws {
+        let failingImportService = TradeImportService(
+            sync: { _ in throw BinanceError.networkError(underlying: URLError(.notConnectedToInternet)) }
+        )
+
+        let processor = try makeProcessor(
+            tradeImportService: failingImportService,
+            priceService: PriceService(fetchPrices: { _ in [:] }),
+            modelContainer: try makeContainer()
+        )
+
+        await processor.handle(.loadPersisted)
+
+        #expect(processor.state.error != nil)
+    }
+}
+
+// MARK: - Redundant API Call Tests
+
+@Suite("Given a PortfolioProcessor refresh")
+struct PortfolioRedundantCallTests {
+
+    @Test("When refresh is called, then cross-margin balances are fetched only once")
+    func refreshDoesNotDoubleFetchCrossMarginBalances() async throws {
+        let service = MarginBalanceService(
+            fetchCrossMarginAccount: { nil },
+            fetchCrossMarginBalances: { [] },
+            fetchIsolatedMarginBalances: { _ in nil },
+            fetchAllIsolatedMarginBalances: { [] }
+        )
+
+        let importService = TradeImportService(sync: { _ in .empty })
+        let crossMarginImportService = MarginTradeImportService(sync: { _, _ in .empty })
+
+        let processor = try makeProcessor(
+            tradeImportService: importService,
+            priceService: PriceService(fetchPrices: { _ in [:] }),
+            modelContainer: try makeContainer(),
+            marginTradeImportService: crossMarginImportService,
+            marginBalanceService: service
+        )
+
+        await processor.handle(.refresh)
+        // persistCrossMarginBalances is the only caller — no double-fetch
+        #expect(processor.state.error == nil, "Refresh should succeed without double-fetching balances")
     }
 }

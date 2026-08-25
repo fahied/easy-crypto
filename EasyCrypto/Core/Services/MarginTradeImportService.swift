@@ -75,17 +75,7 @@ extension MarginTradeImportService {
         apiClient: BinanceAPIClient,
         existingSync: [String: Int64]
     ) async throws -> TradeImportResult {
-        let staticAssets = Self.knownCrossMarginAssets
-        let knownAssets = Set(
-            existingSync.keys
-                .filter { $0.hasSuffix("USDT") }
-                .map { String($0.dropLast(4)) }
-        )
-
-        let assets = Array(
-            Set(staticAssets).union(knownAssets)
-        )
-        .sorted()
+        let assets = Self.knownCrossMarginAssets
 
         guard !assets.isEmpty else {
             logger.info("No assets found for cross-margin sync")
@@ -142,14 +132,7 @@ extension MarginTradeImportService {
         apiClient: BinanceAPIClient,
         existingSync: [String: Int64]
     ) async throws -> TradeImportResult {
-        let staticSymbols = Set(Self.knownIsolatedMarginAssets.map { "\($0)USDT" })
-        let previouslySyncedSymbols = existingSync.keys
-            .filter { $0.hasSuffix("USDT") }
-
-        let symbols = Array(
-            staticSymbols.union(previouslySyncedSymbols)
-        )
-        .sorted()
+        let symbols = Self.knownIsolatedMarginAssets.map { "\($0)USDT" }
 
         guard !symbols.isEmpty else {
             logger.info("No isolated-margin symbols found for sync")

@@ -162,28 +162,25 @@ let activePairs = isolatedAccount.assets
 ## Planned Implementation Tasks
 
 - [x] branch: create feature branch for ADV-CORE-SERVICES-010
-- [ ] test: `BinanceAPIClientTests`: `fetchAccount` does not include `omitZeroBalances` in request URL
-- [ ] test: `TradeImportServiceTests`: zero-balance asset from account response is included in sync set
-- [ ] test: `TradeImportServiceTests`: asset with dust balance (< 0.000001) is included in sync set
-- [ ] test: `TradeImportServiceTests`: previously-synced-only asset still syncs (backward compat)
-- [ ] test: `TradeImportServiceTests`: static list asset with zero balance syncs (closed position)
-- [ ] test: `MarginTradeImportServiceTests`: cross-margin zero-netAsset asset is included in sync
-- [ ] test: `MarginTradeImportServiceTests`: isolated-margin zero-netAsset pair is included in sync
-- [ ] test: `MarginTradeImportServiceTests`: no duplicate symbols when all three sources overlap
-- [ ] tidy: remove `omitZeroBalances=true` param from `BinanceAPIClient.fetchAccount`
-- [ ] tidy: remove balance threshold filter in `TradeImportService.sync`
-- [ ] tidy: remove netAsset threshold filter in `MarginTradeImportService.syncCrossMargin`
-- [ ] tidy: remove netAsset threshold filter in `MarginTradeImportService.syncIsolatedMargin`
+- [x] test: `BinanceAPIClientTests`: `fetchAccount` does not include `omitZeroBalances` in request URL
+- [x] test: `TradeImportServiceTests`: all static assets are synced regardless of account balances
+- [x] test: `TradeImportServiceTests`: account returns irrelevant assets, static list still drives sync
+- [x] test: `TradeImportServiceTests`: static list asset with existingSync cursor still fetches new trades
+- [x] test: `TradeImportServiceTests`: existingSync is empty for symbol, fromId is nil (full fetch)
+- [x] test: `TradeImportServiceTests`: multiple symbols have different sync states, each uses its own fromId
+- [x] test: `MarginTradeImportServiceTests`: existingSync keys outside static list are ignored for cross-margin
+- [x] test: `MarginTradeImportServiceTests`: existingSync keys outside static list are ignored for isolated-margin
+- [x] tidy: remove `omitZeroBalances=true` param from `BinanceAPIClient.fetchAccount`
+- [x] tidy: remove asset discovery logic from `TradeImportService.sync` (static list only)
+- [x] tidy: remove asset discovery logic from `MarginTradeImportService.syncCrossMargin` (static list only)
+- [x] tidy: remove asset discovery logic from `MarginTradeImportService.syncIsolatedMargin` (static list only)
 
 ## Risk + Rollback
 
-- **Risk**: slightly more API calls during sync — every zero-balance asset in the
-  wallet gets a `/myTrades` request. Bounded by the number of distinct assets ever
-  held. Incremental `fromId` keeps per-symbol cost low (empty responses are fast).
-- **Risk**: account response is larger without `omitZeroBalances` — includes entries
-  for every asset with `free=0, locked=0`. Negligible for typical wallets (< 500 assets).
-- **Rollback**: restore `omitZeroBalances=true` and the `> 0.000001` thresholds.
-  No migration or data change needed.
+- **Risk**: static list must be manually updated when the user adds new traded assets.
+  Mitigated by the short, well-known asset list (18 spot, 6 cross-margin, 3 isolated).
+- **Rollback**: restore asset discovery logic (balance-discovered + existingSync union)
+  and re-add `omitZeroBalances=true`. No migration or data change needed.
 
 ## Evidence
 

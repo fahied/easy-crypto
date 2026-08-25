@@ -111,22 +111,23 @@ class PortfolioProcessor: Processor {
     // MARK: - Summary Computation
 
     private func computeSummary() async throws -> PortfolioSummary {
-        let spotHoldings = try await computeSpotHoldings()
-        let crossHoldings = try await computeCrossMarginHoldings()
-        let isolatedHoldings = try await computeIsolatedMarginHoldings()
+        async let spotHoldings = computeSpotHoldings()
+        async let crossHoldings = computeCrossMarginHoldings()
+        async let isolatedHoldings = computeIsolatedMarginHoldings()
 
-        // Realized P&L is derived from the full trade history, not from the surviving
-        // holdings: a position that was bought and sold in full has no holding left but
-        // its profit still counts.
+        let spotResult = try await spotHoldings
+        let crossResult = try await crossHoldings
+        let isolatedResult = try await isolatedHoldings
+
         let spotRealized = realizedPnL(mode: .spot)
         let crossRealized = realizedPnL(mode: .crossMargin)
         let isolatedRealized = realizedPnL(mode: .isolatedMargin)
 
-        let spotSummary = PortfolioSummary(from: spotHoldings, totalRealizedPnL: spotRealized)
-        let crossSummary = PortfolioSummary(from: crossHoldings, totalRealizedPnL: crossRealized)
-        let isolatedSummary = PortfolioSummary(from: isolatedHoldings, totalRealizedPnL: isolatedRealized)
+        let spotSummary = PortfolioSummary(from: spotResult, totalRealizedPnL: spotRealized)
+        let crossSummary = PortfolioSummary(from: crossResult, totalRealizedPnL: crossRealized)
+        let isolatedSummary = PortfolioSummary(from: isolatedResult, totalRealizedPnL: isolatedRealized)
 
-        let allHoldings = spotHoldings + crossHoldings + isolatedHoldings
+        let allHoldings = spotResult + crossResult + isolatedResult
 
         let totalInvested = allHoldings.reduce(0.0) { $0 + $1.totalInvestedUSDT }
         let totalCurrent = allHoldings.reduce(0.0) { $0 + $1.currentValueUSDT }

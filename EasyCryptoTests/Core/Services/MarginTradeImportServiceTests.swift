@@ -103,32 +103,36 @@ struct MarginStaticAssetListTests {
         }
     }
 
-    @Test("When crossMargin has existingSync keys, they are included alongside static list")
-    func crossMarginIncludesPreviouslySyncedSymbols() async throws {
+    @Test("existingSync keys outside the static list are ignored for cross-margin")
+    func crossMarginExistingSyncDoesNotExpandList() async throws {
+        var fetchedSymbols: [String] = []
         let client = makeMarginClient { symbol, _ in
-            [makeMarginTrade(id: 1, symbol: symbol)]
+            fetchedSymbols.append(symbol)
+            return [makeMarginTrade(id: 1, symbol: symbol)]
         }
         let service = MarginTradeImportService.live(apiClient: client)
-        // DOGEUSDT is not in the static list, but has a previous sync cursor
+        // DOGEUSDT is NOT in the static list — should never be fetched
         let result = try await service.sync(.crossMargin, ["DOGEUSDT": 500])
 
-        let symbols = Set(result.mappedTrades.map(\.symbol))
-        #expect(symbols.contains("SOLUSDT"), "SOL should be synced from static list")
-        #expect(symbols.contains("DOGEUSDT"), "DOGE should be synced from existingSync")
+        #expect(!fetchedSymbols.contains("DOGEUSDT"),
+            "existingSync keys outside static list must be ignored")
+        #expect(fetchedSymbols.count == 6, "only the 6 static assets are fetched")
     }
 
-    @Test("When isolatedMargin has existingSync keys, they are included alongside static list")
-    func isolatedMarginIncludesPreviouslySyncedSymbols() async throws {
+    @Test("existingSync keys outside the static list are ignored for isolated-margin")
+    func isolatedMarginExistingSyncDoesNotExpandList() async throws {
+        var fetchedSymbols: [String] = []
         let client = makeMarginClient { symbol, _ in
-            [makeMarginTrade(id: 1, symbol: symbol)]
+            fetchedSymbols.append(symbol)
+            return [makeMarginTrade(id: 1, symbol: symbol)]
         }
         let service = MarginTradeImportService.live(apiClient: client)
-        // ADAUSDT is not in the static list, but has a previous sync cursor
+        // ADAUSDT is NOT in the static list — should never be fetched
         let result = try await service.sync(.isolatedMargin, ["ADAUSDT": 500])
 
-        let symbols = Set(result.mappedTrades.map(\.symbol))
-        #expect(symbols.contains("DEXEUSDT"), "DEXE should be synced from static list")
-        #expect(symbols.contains("ADAUSDT"), "ADA should be synced from existingSync")
+        #expect(!fetchedSymbols.contains("ADAUSDT"),
+            "existingSync keys outside static list must be ignored")
+        #expect(fetchedSymbols.count == 3, "only the 3 static assets are fetched")
     }
 
     @Test("Cross-margin static list contains the correct six assets")
@@ -152,20 +156,21 @@ struct MarginStaticAssetListTests {
         #expect(assets.count == 3)
     }
 
-    @Test("When all sources overlap for cross-margin, no duplicate symbols are fetched")
-    func noDuplicateSymbolsWhenSourcesOverlap() async throws {
-        var fetchCounts: [String: Int] = [:]
+    @Test("existingSync cannot inject symbols beyond the static list")
+    func existingSyncDoesNotExpandAssetList() async throws {
+        var fetchedSymbols: [String] = []
         let client = makeMarginClient { symbol, _ in
-            fetchCounts[symbol, default: 0] += 1
+            fetchedSymbols.append(symbol)
             return [makeMarginTrade(id: 1, symbol: symbol)]
         }
         let service = MarginTradeImportService.live(apiClient: client)
-        // SOL is in static list; add it to existingSync too
-        let result = try await service.sync(.crossMargin, ["SOLUSDT": 500])
+        // UNKNOWN is NOT in the static list — should never be fetched
+        let result = try await service.sync(.crossMargin, ["UNKNOWNUSDT": 500])
 
-        let solTrades = result.mappedTrades.filter { $0.symbol == "SOLUSDT" }
-        #expect(solTrades.count == 1, "SOLUSDT should appear exactly once")
-        #expect(fetchCounts["SOLUSDT"] == 1, "SOLUSDT should be fetched exactly once")
+        #expect(!fetchedSymbols.contains("UNKNOWNUSDT"),
+            "existingSync keys outside the static list must be ignored")
+        #expect(fetchedSymbols.count == 6,
+            "only the 6 static cross-margin assets should be synced")
     }
 }
 
