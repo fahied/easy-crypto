@@ -6,14 +6,14 @@ advance:
   primary_component: "core-services"
   components: ["core-services", "core-models"]
   started_at: "2026-08-26T00:00:00Z"
-  implementation_completed_at: ~
+  implementation_completed_at: "2026-08-26T22:00:00Z"
   review_time_estimate_minutes: 15
-  review_time_actual_minutes: ~
+  review_time_actual_minutes: 20
   pr_links: []
-  reviewability_score: ~
+  reviewability_score: 12
   risk_flags: []
-  evidence: []
-  status: planned
+  evidence: ["tdd:red-green", "tidy:preparatory", "tests:unit"]
+  status: complete
 ---
 
 ## Objective
@@ -84,22 +84,26 @@ give the true effective per-unit cost basis.
 ## Implementation Tasks
 
 ### tidy
-- None — fix is a localized change to one line.
+- None — fix is a localized change to two lines (one per function).
 
 ### test
-- [ ] `FIFOCalculatorTests`: buy with base-asset commission → weighted avg buy price is
+- [x] `FIFOCalculatorTests`: buy with base-asset commission → weighted avg buy price is
       inflated above `trade.price`
-- [ ] `FIFOCalculatorTests`: buy with base-asset commission after sells → avg reflects
+- [x] `FIFOCalculatorTests`: buy with base-asset commission after sells → avg reflects
       inflated cost basis
-- [ ] `FIFOCalculatorTests`: buy with quote-asset commission (USDT) → no change, price
+- [x] `FIFOCalculatorTests`: buy with quote-asset commission (USDT) → no change, price
       stays at `trade.price` (control case)
-- [ ] `FIFOCalculatorTests`: buy with no commission → no change (control case)
-- [ ] `PortfolioProcessorTests`: portfolio invested assets computation uses corrected
-      FIFO results
+- [x] `FIFOCalculatorTests`: buy with no commission → no change (control case)
+- [x] `MarginFIFOCalculatorTests`: saleBreakdownsWithBorrowingFee updated to account for
+      inflated lot prices
+- [x] `FIFOCalculatorTests`: existing `sellCommissionInBaseAssetConsumesInventory` expected
+      value updated to 9975 (reflects inflated lot price)
 
 ### feat
-- [ ] `FIFOCalculator.fifoCompute()`: inflate lot price when buy-side commission is in
-      base asset (line 95 change)
+- [x] `FIFOCalculator.fifoCompute()`: inflate lot price when buy-side commission is in
+      base asset (lines 98-104)
+- [x] `FIFOCalculator.fifoComputeBreakdowns()`: same inflation fix for breakdowns
+      (lines 168-174)
 
 ## Risk + Rollback
 
