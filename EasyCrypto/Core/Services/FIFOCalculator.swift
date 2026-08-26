@@ -92,7 +92,16 @@ nonisolated func fifoCompute(_ trades: [FIFOTrade]) -> FIFOResult {
                 qty -= trade.commission
             }
             if qty > epsilon {
-                lots.append(BuyLot(price: trade.price, remainingQuantity: qty))
+                // When commission is paid in the base asset, the lot price must be
+                // inflated so that `lot.price * lot.remainingQuantity` covers the
+                // total USD spent on the buy, including commission.
+                let lotPrice: Double
+                if trade.commissionAsset == trade.asset {
+                    lotPrice = trade.price * trade.quantity / qty
+                } else {
+                    lotPrice = trade.price
+                }
+                lots.append(BuyLot(price: lotPrice, remainingQuantity: qty))
             }
         } else {
             var sellQty = trade.quantity
@@ -155,7 +164,13 @@ private func fifoComputeBreakdowns(
                 qty -= trade.commission
             }
             if qty > epsilon {
-                lots.append(BuyLot(price: trade.price, remainingQuantity: qty))
+                let lotPrice: Double
+                if trade.commissionAsset == trade.asset {
+                    lotPrice = trade.price * trade.quantity / qty
+                } else {
+                    lotPrice = trade.price
+                }
+                lots.append(BuyLot(price: lotPrice, remainingQuantity: qty))
             }
             breakdowns.append(nil)
         } else {
