@@ -118,6 +118,123 @@ struct FIFOBuyOnlyTests {
     }
 }
 
+// MARK: - Buy-Side Commission Cost Basis (Bug Fix)
+
+@Suite("Given a FIFO calculator with buy-side commission in base asset")
+struct FIFOBaseAssetCommissionTests {
+
+    @Test("When buy commission is in base asset, then weighted avg price includes commission cost")
+    func buyBaseAssetCommissionInflatesAvgPrice() {
+        // Buy 1.0 BTC at 50000 USDT, pay 0.001 BTC commission.
+        // Total spent: 1.0 * 50000 = 50000 USDT.
+        // Net received: 1.0 - 0.001 = 0.999 BTC.
+        // Effective price: 50000 / 0.999 ≈ 50050.05 USDT/BTC.
+        let trades = [
+            makeTrade(
+                price: 50000, quantity: 1.0, isBuyer: true,
+                commission: 0.001, commissionAsset: "BTC", asset: "BTC"
+            ),
+        ]
+        let result = calculator.calculate(trades)
+
+        #expect(result.remainingLots.count == 1)
+        #expect(result.remainingLots[0].remainingQuantity == 0.999)
+        // weightedAvg = 50000 * 1.0 / 0.999 ≈ 50050.05 (not 50000)
+        let expectedAvg = 50000.0 * 1.0 / 0.999
+        #expect(abs(result.weightedAvgBuyPrice - expectedAvg) < 0.01)
+        #expect(result.totalInvestedUSDT == 50000)  // includes commission cost
+        #expect(abs(result.totalInvestedUSDT - result.weightedAvgBuyPrice * result.totalRemainingQuantity) < 0.01)
+    }
+
+    @Test("When buy commission is in USDT, then weighted avg price is unchanged")
+    func buyUSDTCommissionDoesNotAffectAvg() {
+        // Buy 1.0 BTC at 50000 USDT, pay 50 USDT commission.
+        // Total spent: 1.0 * 50000 + 50 = 50050 USDT.
+        // Net received: 1.0 BTC (no base-asset reduction).
+        // Effective price: 50000 (base price, quote commission doesn't affect lot price).
+        let trades = [
+            makeTrade(
+                price: 50000, quantity: 1.0, isBuyer: true,
+                commission: 50, commissionAsset: "USDT", asset: "BTC"
+            ),
+        ]
+        let result = calculator.calculate(trades)
+
+        #expect(result.remainingLots[0].remainingQuantity == 1.0)
+        #expect(result.weightedAvgBuyPrice == 50000)
+        #expect(result.totalInvestedUSDT == 50000)
+    }
+
+    @Test("When buy has no commission, then weighted avg price equals trade price")
+    func buyNoCommissionNoChange() {
+        let trades = [
+            makeTrade(price: 50000, quantity: 1.0, isBuyer: true),
+        ]
+        let result = calculator.calculate(trades)
+
+        #expect(result.weightedAvgBuyPrice == 50000)
+        #expect(result.totalInvestedUSDT == 50000)
+    }
+
+    @Test("When buy with base-asset commission is followed by sell, then P&L reflects the inflated cost basis")
+    func buyCommissionThenSellCorrectlyValuesFees() {
+        // Buy 1.0 BTC @ 50000, commission 0.001 BTC.
+        //   Effective price = 50000 * 1.0 / 0.999 ≈ 50050.05
+        //   Net held = 0.999 BTC
+        // Sell 0.999 BTC @ 55000, commission 0.0005 BTC (in base asset).
+        //   sellQty = 0.999 + 0.0005 = 0.9995
+        //   consumed = min(0.999, 0.9995) = 0.999
+        //   soldPortion = min(0.999, 0.999) = 0.999  (quantity actually sold)
+        //   feePortion = 0.999 - 0.999 = 0           (commission didn't consume extra lot)
+        //   realized = 0.999 * (55000 - 50050.05) = 4945.45
+        // Note: the 0.0005 BTC sell commission costs 0.0005 * 55000 = 27.50 USDT
+        // but is NOT deducted from realizedPnL (feePortion is 0).
+        let trades = [
+            makeTrade(
+                price: 50000, quantity: 1.0, isBuyer: true,
+                commission: 0.001, commissionAsset: "BTC", asset: "BTC"
+            ),
+            makeTrade(
+                price: 55000, quantity: 0.999, isBuyer: false,
+                commission: 0.0005, commissionAsset: "BTC", asset: "BTC"
+            ),
+        ]
+        let result = calculator.calculate(trades)
+
+        #expect(result.remainingLots.isEmpty)
+        let effectivePrice = 50000.0 * 1.0 / 0.999
+        let soldPortion = 0.999
+        let expectedPnL = soldPortion * (55000 - effectivePrice)
+        #expect(abs(result.realizedPnL - expectedPnL) < 0.01)
+    }
+
+    @Test("When DCA buys all have base-asset commission, then weighted avg includes all commission costs")
+    func dcaWithBaseAssetCommission() {
+        // Buy 1: 1.0 BTC @ 50000, commission 0.001 BTC → effective 50000/0.999, 0.999 remaining
+        // Buy 2: 1.0 BTC @ 60000, commission 0.001 BTC → effective 60000/0.999, 0.999 remaining
+        // Total invested: 50000 + 60000 = 110000
+        // Total remaining: 0.999 + 0.999 = 1.998
+        // Weighted avg: 110000 / 1.998 ≈ 55055.06
+        let trades = [
+            makeTrade(
+                price: 50000, quantity: 1.0, isBuyer: true,
+                commission: 0.001, commissionAsset: "BTC", asset: "BTC"
+            ),
+            makeTrade(
+                price: 60000, quantity: 1.0, isBuyer: true,
+                commission: 0.001, commissionAsset: "BTC", asset: "BTC"
+            ),
+        ]
+        let result = calculator.calculate(trades)
+
+        #expect(result.remainingLots.count == 2)
+        #expect(abs(result.totalRemainingQuantity - 1.998) < 0.0001)
+        #expect(result.totalInvestedUSDT == 110000)
+        let expectedAvg = 110000.0 / 1.998
+        #expect(abs(result.weightedAvgBuyPrice - expectedAvg) < 0.01)
+    }
+}
+
 // MARK: - Buy Then Full Sell
 
 @Suite("Given a FIFO calculator processing a buy then full sell")
@@ -277,6 +394,9 @@ struct FIFOSellCommissionTests {
 
         #expect(result.remainingLots.isEmpty)
         #expect(result.totalRemainingQuantity == 0)
+        // Buy 1.0005 @ 50000 = 50025 cost basis
+        // Sell 1.0 @ 60000 → proceeds 60000, but 0.0005 BTC commission consumed from lot too
+        // P&L = 60000 - (1.0 + 0.0005) * 50000 = 60000 - 50025 = 9975
         #expect(abs(result.realizedPnL - 9975) < 0.0001)
     }
 }

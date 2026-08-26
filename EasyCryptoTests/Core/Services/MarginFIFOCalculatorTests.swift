@@ -137,7 +137,10 @@ struct MarginFIFOCalculatorTests {
 
     @Test("When borrowingFeePerUnit is provided, then it deducts fees from each breakdown")
     func saleBreakdownsWithBorrowingFee() async throws {
-        // Buy 2 BTC @ 50k, sell 1 BTC @ 55k (commission 0.001 USDT)
+        // Buy 2 BTC @ 50k, commission 0.001 BTC → effective price 50000*2/1.999 ≈ 50025.012
+        // Sell 1 BTC @ 55k, commission 0.001 USDT
+        //   P&L: 1.0*(55000 - 50025.012) - 0.001 (USDT commission) - 0.01 (borrowing fee)
+        //       = 49974.988 - 0.001 - 0.01 = 49974.977
         let trades: [FIFOTrade] = [
             .init(price: 50000, quantity: 2.0, commission: 0.001, commissionAsset: "BTC",
                   asset: "BTC", isBuyer: true),
@@ -149,9 +152,9 @@ struct MarginFIFOCalculatorTests {
         let breakdowns = FIFOCalculator.live.saleBreakdownsWithBorrowingFee(trades, feePerUnit)
 
         let sellBreakdown = breakdowns[1]!
-        // Without fee: (55000 - 50000) * 1 - 0.001 (USDT commission) = 4999.999
-        // With fee: 4999.999 - 1.0 * 0.01 (borrowing fee) = 4999.989
-        #expect(abs(sellBreakdown.realizedPnL - 4999.989) < 1e-6)
+        let effectivePrice = 50000.0 * 2.0 / 1.999
+        let expectedPnL = 1.0 * (55000 - effectivePrice) - 0.001 - 1.0 * 0.01
+        #expect(abs(sellBreakdown.realizedPnL - expectedPnL) < 1e-6)
     }
 
     @Test("When feePerUnit is zero, then saleBreakdownsWithBorrowingFee matches saleBreakdowns")
