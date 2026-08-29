@@ -32,13 +32,29 @@ nonisolated struct FIFOResult: Equatable, Sendable {
     let totalInvestedUSDT: Double
     let realizedPnL: Double
 
+    /// Simple average across all buy trades: total USD spent on every buy (including
+    /// base-asset commission) divided by the total quantity received from all buys.
+    /// This matches Binance's "Avg Buy" display, which does not re-average after sells.
+    let totalBoughtUSDT: Double
+    let totalBoughtQuantity: Double
+
     static let empty = FIFOResult(
         remainingLots: [],
         totalRemainingQuantity: 0,
         weightedAvgBuyPrice: 0,
         totalInvestedUSDT: 0,
-        realizedPnL: 0
+        realizedPnL: 0,
+        totalBoughtUSDT: 0,
+        totalBoughtQuantity: 0
     )
+
+    /// Binance-style simple average: total USD spent across all buys divided by total
+    /// quantity received. Does not change after sells. Use this for "Avg Buy" display
+    /// to match Binance. Falls back to `weightedAvgBuyPrice` when no buys exist.
+    var simpleAvgBuyPrice: Double {
+        guard totalBoughtQuantity > 0 else { return weightedAvgBuyPrice }
+        return totalBoughtUSDT / totalBoughtQuantity
+    }
 }
 
 /// Cost-basis breakdown for a single sell trade, derived from the FIFO lots it consumed.
@@ -66,6 +82,9 @@ nonisolated struct MarginFIFOResult: Equatable, Sendable {
     var weightedAvgBuyPrice: Double { fifoResult.weightedAvgBuyPrice }
     var totalInvestedUSDT: Double { fifoResult.totalInvestedUSDT }
     var realizedPnL: Double { fifoResult.realizedPnL }
+    var simpleAvgBuyPrice: Double { fifoResult.simpleAvgBuyPrice }
+    var totalBoughtUSDT: Double { fifoResult.totalBoughtUSDT }
+    var totalBoughtQuantity: Double { fifoResult.totalBoughtQuantity }
 
     static let empty = MarginFIFOResult(
         fifoResult: .empty,
@@ -84,6 +103,8 @@ nonisolated func fifoCompute(_ trades: [FIFOTrade]) -> FIFOResult {
 
     var lots: [BuyLot] = []
     var realizedPnL: Double = 0
+    var totalBoughtUSDT: Double = 0
+    var totalBoughtQuantity: Double = 0
 
     for trade in trades {
         if trade.isBuyer {
@@ -102,6 +123,15 @@ nonisolated func fifoCompute(_ trades: [FIFOTrade]) -> FIFOResult {
                     lotPrice = trade.price
                 }
                 lots.append(BuyLot(price: lotPrice, remainingQuantity: qty))
+            }
+
+            // Binance-style simple average: accumulate total USD spent on every buy
+            // and the total quantity received (net of base-asset commission).
+            totalBoughtUSDT += trade.price * trade.quantity
+            let receivedQty = trade.commissionAsset == trade.asset
+                ? trade.quantity - trade.commission : trade.quantity
+            if receivedQty > 0 {
+                totalBoughtQuantity += receivedQty
             }
         } else {
             var sellQty = trade.quantity
@@ -143,7 +173,9 @@ nonisolated func fifoCompute(_ trades: [FIFOTrade]) -> FIFOResult {
         totalRemainingQuantity: totalRemainingQty,
         weightedAvgBuyPrice: weightedAvg,
         totalInvestedUSDT: totalInvested,
-        realizedPnL: realizedPnL
+        realizedPnL: realizedPnL,
+        totalBoughtUSDT: totalBoughtUSDT,
+        totalBoughtQuantity: totalBoughtQuantity
     )
 }
 

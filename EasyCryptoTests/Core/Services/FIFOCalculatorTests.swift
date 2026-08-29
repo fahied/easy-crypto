@@ -489,6 +489,118 @@ struct FIFOEdgeCaseTests {
     }
 }
 
+// MARK: - Simple Average (Binance-style)
+
+@Suite("Given a FIFO calculator computing Binance-style simple average")
+struct FIFOSimpleAverageTests {
+
+    @Test("When only buys exist, then simple avg equals FIFO weighted avg")
+    func simpleAvgEqualsWeightedWithNoSells() {
+        let trades = [
+            makeTrade(price: 40000, quantity: 3.0, isBuyer: true),  // 120,000
+            makeTrade(price: 60000, quantity: 1.0, isBuyer: true),  // 60,000
+        ]
+        let result = calculator.calculate(trades)
+
+        #expect(abs(result.simpleAvgBuyPrice - 45000) < 0.01)
+        #expect(abs(result.weightedAvgBuyPrice - result.simpleAvgBuyPrice) < 0.01)
+    }
+
+    @Test("When a partial sell occurs, then simple avg stays unchanged but weighted avg changes")
+    func simpleAvgUnchangedAfterPartialSell() {
+        // Binance buys 2 BTC at 40000 and 1 BTC at 60000, then sells 0.5 BTC.
+        // Binance "Avg Buy" stays at (40000*2 + 60000*1) / 3 ≈ 46666.67 regardless of the sell.
+        let trades = [
+            makeTrade(price: 40000, quantity: 2.0, isBuyer: true),  // 80,000
+            makeTrade(price: 60000, quantity: 1.0, isBuyer: true),  // 60,000
+            makeTrade(price: 50000, quantity: 0.5, isBuyer: false),
+        ]
+        let result = calculator.calculate(trades)
+
+        // Total bought: 80,000 + 60,000 = 140,000 USDT, 3.0 BTC received
+        #expect(abs(result.totalBoughtUSDT - 140000) < 0.01)
+        #expect(abs(result.totalBoughtQuantity - 3.0) < 0.0001)
+        #expect(abs(result.simpleAvgBuyPrice - 46666.67) < 0.01)
+
+        // Remaining lots: 1.5 @ 40000 + 1.0 @ 60000 → weighted avg = 120000 / 2.5 = 48000
+        #expect(abs(result.weightedAvgBuyPrice - 48000) < 1.0)
+        #expect(result.simpleAvgBuyPrice != result.weightedAvgBuyPrice)
+    }
+
+    @Test("When all inventory is sold, then simple avg still reflects original buy price")
+    func simpleAvgPersistsAfterFullSell() {
+        let trades = [
+            makeTrade(price: 40000, quantity: 2.0, isBuyer: true),
+            makeTrade(price: 60000, quantity: 1.0, isBuyer: true),
+            makeTrade(price: 55000, quantity: 3.0, isBuyer: false),
+        ]
+        let result = calculator.calculate(trades)
+
+        // No lots remain, but totalBoughtUSDT/Quantity still reflect the buys
+        #expect(result.totalBoughtUSDT == 140_000)
+        #expect(result.totalBoughtQuantity == 3.0)
+        #expect(abs(result.simpleAvgBuyPrice - 46666.67) < 0.01)
+        #expect(result.weightedAvgBuyPrice == 0)
+    }
+
+    @Test("When buy has base-asset commission, then simple avg includes commission cost")
+    func simpleAvgWithBaseAssetCommission() {
+        // Buy 1.0 BTC @ 50000, pay 0.001 BTC commission.
+        // Total spent: 50000 USDT, received: 0.999 BTC.
+        // Simple avg = 50000 / 0.999 ≈ 50050.05
+        let trades = [
+            makeTrade(
+                price: 50000, quantity: 1.0, isBuyer: true,
+                commission: 0.001, commissionAsset: "BTC", asset: "BTC"
+            ),
+        ]
+        let result = calculator.calculate(trades)
+
+        #expect(abs(result.totalBoughtUSDT - 50000) < 0.01)
+        #expect(abs(result.totalBoughtQuantity - 0.999) < 0.0001)
+        #expect(abs(result.simpleAvgBuyPrice - 50000.0 / 0.999) < 0.01)
+    }
+
+    @Test("When buy has quote-asset commission, then simple avg uses total USD including commission")
+    func simpleAvgWithQuoteAssetCommission() {
+        // Buy 1.0 BTC @ 50000, pay 50 USDT commission.
+        // Total USD spent on trade: 50000 (commission is separate, not part of the trade price).
+        // simpleAvgBuyPrice = 50000 / 1.0 = 50000
+        // (quote-asset commission is not included in the average price — matches Binance behavior
+        // where the "Avg Buy" is based on fills, not fees)
+        let trades = [
+            makeTrade(
+                price: 50000, quantity: 1.0, isBuyer: true,
+                commission: 50, commissionAsset: "USDT", asset: "BTC"
+            ),
+        ]
+        let result = calculator.calculate(trades)
+
+        #expect(result.totalBoughtUSDT == 50000)
+        #expect(result.totalBoughtQuantity == 1.0)
+        #expect(result.simpleAvgBuyPrice == 50000)
+    }
+
+    @Test("With DCA buys then a sell, then simple avg matches Binance total-spent/total-qty")
+    func dcaWithPartialSellSimpleAvg() {
+        // Mirrors the user's XRP scenario: buy at different prices, then sell some.
+        // Binance Avg = total USD across ALL buys / total Qty across ALL buys.
+        let trades = [
+            makeTrade(price: 0.4200, quantity: 1000, isBuyer: true),   // 420 USDT, 1000 XRP
+            makeTrade(price: 0.4800, quantity: 1000, isBuyer: true),   // 480 USDT, 1000 XRP
+            makeTrade(price: 0.4500, quantity: 500, isBuyer: true),    // 225 USDT, 500 XRP
+            makeTrade(price: 0.5500, quantity: 500, isBuyer: false),   // sell 500 XRP
+        ]
+        let result = calculator.calculate(trades)
+
+        // Total bought: 420 + 480 + 225 = 1125 USDT, total qty: 1000 + 1000 + 500 = 2500
+        let expectedSimpleAvg = 1125.0 / 2500.0  // 0.45
+        #expect(abs(result.totalBoughtUSDT - 1125) < 0.01)
+        #expect(abs(result.totalBoughtQuantity - 2500) < 0.001)
+        #expect(abs(result.simpleAvgBuyPrice - expectedSimpleAvg) < 0.0001)
+    }
+}
+
 // MARK: - Parameterized Weighted Average
 
 struct WeightedAvgScenario: Sendable, CustomTestStringConvertible {

@@ -69,16 +69,16 @@ class CoinDetailProcessor: Processor {
             let result = fifoCalculator.calculate(fifoTrades)
             let prices = try await priceService.fetchPrices([symbol])
             let currentPrice = prices[symbol] ?? 0
+            let avgBuyPrice = result.simpleAvgBuyPrice
             let currentValue = result.totalRemainingQuantity * currentPrice
-            let unrealizedPnL = currentValue - result.totalInvestedUSDT
-            let unrealizedPnLPercent = result.totalInvestedUSDT > 0
-                ? (unrealizedPnL / result.totalInvestedUSDT) * 100 : 0
+            let unrealizedPnL = avgBuyPrice > 0 ? (currentPrice - avgBuyPrice) * result.totalRemainingQuantity : 0
+            let unrealizedPnLPercent = avgBuyPrice > 0 ? (unrealizedPnL / (avgBuyPrice * result.totalRemainingQuantity)) * 100 : 0
 
             state.holding = Holding(
                 asset: asset,
                 totalQuantity: result.totalRemainingQuantity,
-                weightedAvgBuyPrice: result.weightedAvgBuyPrice,
-                totalInvestedUSDT: result.totalInvestedUSDT,
+                weightedAvgBuyPrice: avgBuyPrice,
+                totalInvestedUSDT: avgBuyPrice * result.totalRemainingQuantity,
                 currentPrice: currentPrice,
                 currentValueUSDT: currentValue,
                 unrealizedPnL: unrealizedPnL,

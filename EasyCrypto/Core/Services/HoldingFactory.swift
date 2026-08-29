@@ -24,7 +24,7 @@ nonisolated enum HoldingFactory {
         marginAdjustedPnL: Double? = nil,
         liquidationPrice: Double? = nil
     ) -> Holding {
-        let avgBuyPrice = fifo.weightedAvgBuyPrice
+        let avgBuyPrice = fifo.simpleAvgBuyPrice
         let hasCostBasis = avgBuyPrice > 0
         let invested = hasCostBasis ? avgBuyPrice * quantity : 0
         let currentValue = quantity * currentPrice
