@@ -241,9 +241,12 @@ def fetch_trades_for_date(date_str):
     out_dir = tempfile.mkdtemp(prefix="easycrypto_trades_")
     date_file = os.path.join(out_dir, f"{date_str}.json")
     print(f"Fetching trades for {date_str}…")
+    cmd = ["bash", script_path, out_dir]
+    if date_str:
+        cmd += ["--date", date_str]
     try:
         result = subprocess.run(
-            ["bash", script_path, out_dir],
+            cmd,
             capture_output=True, text=True, timeout=300,
             env={**os.environ, "PYTHONUNBUFFERED": "1"}
         )
