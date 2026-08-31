@@ -1,7 +1,7 @@
 ---
 advance:
   id: "ADV-CORE-SERVICES-011"
-  title: "Wire simpleAvgBuyPrice (Binance-style) as the display avg for Holdings"
+  title: "Revert to weightedAvgBuyPrice — simpleAvg was the wrong metric for display"
   system: "easycrypto-core"
   primary_component: "core-services"
   components: ["core-services", "features-holdings"]
@@ -15,114 +15,82 @@ advance:
   evidence: ["tdd:red-green", "tidy:preparatory", "tests:unit"]
   status: complete
   blocks: ["ADV-CORE-SERVICES-010"]
+  supersedes: ["ADV-CORE-SERVICES-011-v1"]
 ---
 
 ## Objective
 
-Wire up the `simpleAvgBuyPrice` (Binance-style) that was added in ADV-010 into the
-HoldingFactory and CoinDetailProcessor so that both the Holdings tab and the per-coin
-detail screen display the same avg buy price Binance shows. Also update UnrealizedProfit
-to match.
+Revert the `simpleAvgBuyPrice` wiring introduced in ADV-011-v1. `simpleAvgBuyPrice`
+divides lifetime USD spent across all buy trades by lifetime quantity received — old
+fully-sold trades pull the average down. This is wrong for a portfolio tracker where
+the user wants to know the cost basis of what they currently hold.
 
-## Context — What ADV-010 Fixed vs What It Didn't
+Use `weightedAvgBuyPrice` instead — it averages only the remaining FIFO lots, so it
+correctly reflects what was actually paid for what is currently held.
 
-ADV-010 fixed **lot price inflation** for base-asset commission buys (the FIFO engine's
-cost basis was wrong). It also added `totalBoughtUSDT`, `totalBoughtQuantity`, and
-`simpleAvgBuyPrice` to `FIFOResult` — a Binance-style average that divides total USD
-spent across all buys by total net quantity received, never changing after sells.
+## Root Cause
 
-However, ADV-010 did **not** update the consumers of `FIFOResult` to use the new
-`simpleAvgBuyPrice`. Both `HoldingFactory.make()` and `CoinDetailProcessor.loadDetail()`
-continued to use `weightedAvgBuyPrice` (FIFO-weighted over remaining lots), which is
-correct for tax cost basis but wrong for Binance display parity.
+`simpleAvgBuyPrice` was introduced to mimic Binance's spot "Avg Buy" display. But that
+metric conflates closed and open positions:
 
-## Root Cause (Display Layer)
-
-| Consumer | Field Used | Result |
+| Scenario | simpleAvgBuyPrice | weightedAvgBuyPrice |
 |---|---|---|
-| `HoldingFactory.make()` | `fifo.weightedAvgBuyPrice` | FIFO-weighted over remaining lots |
-| `CoinDetailProcessor.loadDetail()` | `result.weightedAvgBuyPrice` + `result.totalInvestedUSDT` | FIFO-weighted |
-| `UnrealizedProfit.compute()` | `result.totalInvestedUSDT` | FIFO-weighted remaining |
+| 1 buy, no sells | $78,084 | $78,084 |
+| Buy @ $70k, Buy @ $78k, no sells | $74,042 | $74,042 |
+| Buy @ $70k (sold), Buy @ $78k (held) | **$74,042** | **$78,084** ✓ |
 
-After any sell, `weightedAvgBuyPrice` shifts because only unsold lots contribute.
-Binance's "Avg Buy" never shifts.
-
-### Concrete Example
-
-Two buys, one partial sell:
-
-| Trade | Type | Price | Qty | Commission | USD Spent | Net Qty |
-|---|---|---|---|---|---|---|
-| Buy 1 | buy | $60,000 | 0.01 | 0.00001 BTC | $600.00 | 0.00999 |
-| Buy 2 | buy | $65,000 | 0.01 | 0.00001 BTC | $650.00 | 0.00999 |
-| Sell | sell | $70,000 | 0.005 | 0.00001 BTC | — | — |
-
-After sell, 0.00498 BTC remains (all from Buy 2):
-
-```
-Binance simpleAvg: (600 + 650) / (0.00999 + 0.00999) = 62,562.56
-FIFO weightedAvg: 65,000 (only Buy 2 lot remains)
-```
-
-The Holdings tab was showing $65,000, Binance shows $62,562.56.
+In the third case, `simpleAvgBuyPrice` includes the sold $70k lot — dragging the
+average down and overstating the cost basis of the current position.
 
 ## Fix
 
-### 1. HoldingFactory.make() — use simpleAvgBuyPrice
+### 1. HoldingFactory.make() — use weightedAvgBuyPrice
 
 ```swift
-let avgBuyPrice = fifo.simpleAvgBuyPrice  // was fifo.weightedAvgBuyPrice
+let avgBuyPrice = fifo.weightedAvgBuyPrice  // was fifo.simpleAvgBuyPrice
 ```
 
-All downstream derived fields (`invested`, `unrealizedPnL`, `unrealizedPnLPercent`)
-automatically follow because they depend on `avgBuyPrice`.
+### 2. CoinDetailProcessor.loadDetail() — use weightedAvgBuyPrice
 
-### 2. CoinDetailProcessor.loadDetail() — use simpleAvgBuyPrice
+```swift
+let avgBuyPrice = result.weightedAvgBuyPrice  // was result.simpleAvgBuyPrice
+```
 
-Same change. Also rebuilt `invested` from `avgBuyPrice × remainingQuantity` instead
-of using `result.totalInvestedUSDT` (which is FIFO-weighted).
+Also passes `tradingMode` through the intent so the detail view filters trades by mode,
+matching the Holdings tab. The Holding is now constructed with `tradingMode`.
 
-### 3. UnrealizedProfit.compute() — use simpleAvgBuyPrice
+### 3. UnrealizedProfit.compute() — use weightedAvgBuyPrice
 
-Rebuilt `invested = simpleAvgBuyPrice × totalRemainingQuantity` to match display.
+```swift
+let invested = result.weightedAvgBuyPrice * result.totalRemainingQuantity
+// was result.simpleAvgBuyPrice * result.totalRemainingQuantity
+```
 
 ## Files Changed
 
 | File | Change |
 |---|---|
-| `EasyCrypto/Core/Services/HoldingFactory.swift` | `fifo.simpleAvgBuyPrice` instead of `fifo.weightedAvgBuyPrice` |
-| `EasyCrypto/Features/Holdings/CoinDetailProcessor.swift` | `result.simpleAvgBuyPrice`; rebuild invested from avg price × quantity |
-| `EasyCrypto/Core/Services/UnrealizedProfit.swift` | `result.simpleAvgBuyPrice * result.totalRemainingQuantity` |
+| `EasyCrypto/Core/Services/HoldingFactory.swift` | `fifo.weightedAvgBuyPrice` instead of `fifo.simpleAvgBuyPrice` |
+| `EasyCrypto/Features/Holdings/CoinDetailProcessor.swift` | `result.weightedAvgBuyPrice`; pass `tradingMode` through intent and predicate |
+| `EasyCrypto/Core/Services/UnrealizedProfit.swift` | `result.weightedAvgBuyPrice * result.totalRemainingQuantity` |
+| `EasyCrypto/Features/Holdings/CoinDetailIntent.swift` | Added `tradingMode` parameter to `loadDetail(asset:tradingMode:)` with default `.spot` |
 
 ## Behavioral Change
 
-- **Holdings tab "Avg Buy"**: now matches Binance's "Avg Buy" exactly — total USD spent
-  on all buys / total net quantity received. Does not change after sells.
+- **Holdings tab "Avg Buy"**: now reflects the cost basis of remaining lots only.
+  Changes after sells — correctly.
 - **Coin detail "Avg Cost"**: same value as Holdings tab for consistency.
-- **Portfolio "Invested"**: now uses `avgBuyPrice × walletQuantity` instead of FIFO
-  weighted sum of remaining lots. More accurate representation of user's total spend.
-- **Price alert unrealized P&L**: computed from same display avg, consistent with app.
-
-## Verification
-
-- FIFO calculator tests pass (inflation, breakdowns, margin).
-- HoldingsFactory and CoinDetailProcessor don't have standalone unit tests but
-  build cleanly and flow correctly through the full app.
+- **Invested**: `weightedAvgBuyPrice × walletQuantity` — actual cost of what's held.
+- **Price alert unrealized P&L**: computed from weighted average, consistent with holdings.
 
 ## Risk
 
-- Low: `FIFOResult.simpleAvgBuyPrice` is a computed property that gracefully falls
-  back to `weightedAvgBuyPrice` when no buys exist (both are 0).
+- Low: `weightedAvgBuyPrice` was the original correct metric. `simpleAvgBuyPrice` is
+  retained as a computed property on `FIFOResult` for any future use.
 - No schema changes; no API changes.
-- Only affects display values — FIFO tax calculations are unchanged.
-
-## Rollback
-
-Revert the three consumer files to use `weightedAvgBuyPrice` / `totalInvestedUSDT` again.
 
 ## Check for Understanding
 
-1. Why does `weightedAvgBuyPrice` shift after a sell while `simpleAvgBuyPrice` doesn't?
-2. Why must `HoldingFactory` use the wallet's authoritative quantity (`quantity` param)
-   rather than `result.totalRemainingQuantity` when computing invested?
-3. Why does `UnrealizedProfit.compute()` need the same simpleAvg treatment as the UI?
+1. Why is `simpleAvgBuyPrice` misleading for a portfolio tracker after sells?
+2. Why does `weightedAvgBuyPrice` change after a sell, and is that the correct behavior?
+3. Why must the CoinDetailProcessor filter trades by `tradingMode` to match the Holdings tab?

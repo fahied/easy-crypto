@@ -22,6 +22,6 @@ enum ChartInterval: String, Sendable, CaseIterable {
 }
 
 enum CoinDetailIntent: Intent {
-    case loadDetail(asset: String)
+    case loadDetail(asset: String, tradingMode: TradingMode = .spot)
     case changeChartInterval(ChartInterval)
 }

@@ -8,8 +8,9 @@ import Foundation
 /// Shared helper for computing per-asset unrealized USDT profit from chronological
 /// trades and a current price. Used by background price-alert evaluation.
 nonisolated enum UnrealizedProfit {
-    /// Unrealized USDT profit for one asset. Uses `simpleAvgBuyPrice` (Binance-style)
-    /// so the result matches the Holdings tab display. Returns 0 when no quantity remains.
+    /// Unrealized USDT profit for one asset. Uses `weightedAvgBuyPrice` so
+    /// invested reflects the cost basis of remaining lots only.
+    /// Returns 0 when no quantity remains.
     static func compute(
         trades: [FIFOTrade],
         currentPrice: Double,
@@ -17,7 +18,7 @@ nonisolated enum UnrealizedProfit {
     ) -> Double {
         let result = calculator.calculate(trades)
         guard result.totalRemainingQuantity > 0 else { return 0 }
-        let invested = result.simpleAvgBuyPrice * result.totalRemainingQuantity
+        let invested = result.weightedAvgBuyPrice * result.totalRemainingQuantity
         return result.totalRemainingQuantity * currentPrice - invested
     }
 }

@@ -30,14 +30,14 @@ class CoinDetailProcessor: Processor {
 
     func handle(_ intent: CoinDetailIntent) async {
         switch intent {
-        case .loadDetail(let asset):
-            await loadDetail(asset: asset)
+        case .loadDetail(let asset, let tradingMode):
+            await loadDetail(asset: asset, tradingMode: tradingMode)
         case .changeChartInterval(let interval):
             await changeInterval(interval)
         }
     }
 
-    private func loadDetail(asset: String) async {
+    private func loadDetail(asset: String, tradingMode: TradingMode) async {
         state.asset = asset
         state.isLoading = true
         state.error = nil
@@ -45,9 +45,11 @@ class CoinDetailProcessor: Processor {
         do {
             let symbol = "\(asset)USDT"
 
-            // Fetch trades for this asset from SwiftData
-            let predicate = #Predicate<Trade> { $0.asset == asset }
-            var descriptor = FetchDescriptor<Trade>(
+            // Fetch trades for this asset and trading mode from SwiftData.
+            // Filtering by mode matches HoldingsProcessor.fetchTrades(matching:) so
+            // the detail view shows the same trades (and avg price) as the list.
+            let predicate = #Predicate<Trade> { $0.asset == asset && $0.tradingMode == tradingMode.rawValue }
+            let descriptor = FetchDescriptor<Trade>(
                 predicate: predicate,
                 sortBy: [SortDescriptor(\.timestamp)]
             )
@@ -69,10 +71,10 @@ class CoinDetailProcessor: Processor {
             let result = fifoCalculator.calculate(fifoTrades)
             let prices = try await priceService.fetchPrices([symbol])
             let currentPrice = prices[symbol] ?? 0
-            // Use simpleAvgBuyPrice (Binance-style) for display consistency with
-            // the Holdings tab. This is total USD spent / total qty received,
-            // never changes after sells.
-            let avgBuyPrice = result.simpleAvgBuyPrice
+            // Use weightedAvgBuyPrice for display: it reflects the cost basis
+            // of the remaining lots only, matching what you actually paid for
+            // what you currently hold.
+            let avgBuyPrice = result.weightedAvgBuyPrice
             let currentValue = result.totalRemainingQuantity * currentPrice
             let invested = avgBuyPrice > 0 ? avgBuyPrice * result.totalRemainingQuantity : 0
             let unrealizedPnL = currentValue - invested
@@ -88,7 +90,8 @@ class CoinDetailProcessor: Processor {
                 currentValueUSDT: currentValue,
                 unrealizedPnL: unrealizedPnL,
                 unrealizedPnLPercent: unrealizedPnLPercent,
-                realizedPnL: result.realizedPnL
+                realizedPnL: result.realizedPnL,
+                tradingMode: tradingMode
             )
 
             // Fetch klines for chart
