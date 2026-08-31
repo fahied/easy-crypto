@@ -220,17 +220,27 @@ class HoldingsProcessor: Processor {
             )
             return (quantities, interest)
         } else {
-            // Cross-margin: no persistent per-asset quantity model.
-            // Use FIFO remaining quantity as a proxy; real cross-margin balances
-            // come from AccountBalance rows populated by PortfolioProcessor refresh.
-            let allTrades = try fetchTrades(matching: .crossMargin)
-            let tradesByAsset = Dictionary(grouping: allTrades) { $0.asset }
+            // Cross-margin: quantities come from the live balance snapshot, not from
+            // FIFO trade history. Trade history alone cannot distinguish between
+            // an asset currently held and an asset that was traded but fully closed.
+            let crossBalances = (try? await marginBalanceService.fetchCrossMarginBalances()) ?? []
+            let balanceByAsset = Dictionary(
+                crossBalances.map { ($0.asset, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
+
+            // Only include assets with a positive net asset in the cross-margin account.
+            // Assets that appear in trade history but have zero balance are excluded.
             var quantities: [String: Double] = [:]
             var interest: [String: Double] = [:]
-            for (asset, assetTrades) in tradesByAsset {
-                let result = fifoCalculator.calculate(assetTrades.map(Self.toFIFOTrade))
-                guard result.totalRemainingQuantity > 0 else { continue }
-                quantities[asset] = result.totalRemainingQuantity
+            let threshold: Double = 0.000001
+            for (asset, balance) in balanceByAsset {
+                if balance.netAsset > threshold {
+                    quantities[asset] = balance.netAsset
+                    if balance.interest > 0 {
+                        interest[asset] = balance.interest
+                    }
+                }
             }
             return (quantities, interest)
         }
