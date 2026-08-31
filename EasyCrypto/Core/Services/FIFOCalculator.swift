@@ -32,13 +32,29 @@ nonisolated struct FIFOResult: Equatable, Sendable {
     let totalInvestedUSDT: Double
     let realizedPnL: Double
 
+    /// Total USD spent across all buy trades, including quote-asset commission.
+    let totalBoughtUSDT: Double
+    /// Total base-asset quantity received across all buy trades, net of base-asset commission.
+    let totalBoughtQuantity: Double
+
     static let empty = FIFOResult(
         remainingLots: [],
         totalRemainingQuantity: 0,
         weightedAvgBuyPrice: 0,
         totalInvestedUSDT: 0,
-        realizedPnL: 0
+        realizedPnL: 0,
+        totalBoughtUSDT: 0,
+        totalBoughtQuantity: 0
     )
+
+    /// Binance-style simple average buy price: total USD spent across all buys
+    /// (including quote-asset commission) divided by total quantity received
+    /// (net of base-asset commission). This never changes after sells — it
+    /// matches Binance's "Avg Buy" display exactly.
+    var simpleAvgBuyPrice: Double {
+        guard totalBoughtQuantity > 0 else { return weightedAvgBuyPrice }
+        return totalBoughtUSDT / totalBoughtQuantity
+    }
 }
 
 /// Cost-basis breakdown for a single sell trade, derived from the FIFO lots it consumed.
@@ -64,7 +80,10 @@ nonisolated struct MarginFIFOResult: Equatable, Sendable {
     var remainingLots: [BuyLot] { fifoResult.remainingLots }
     var totalRemainingQuantity: Double { fifoResult.totalRemainingQuantity }
     var weightedAvgBuyPrice: Double { fifoResult.weightedAvgBuyPrice }
+    var simpleAvgBuyPrice: Double { fifoResult.simpleAvgBuyPrice }
     var totalInvestedUSDT: Double { fifoResult.totalInvestedUSDT }
+    var totalBoughtUSDT: Double { fifoResult.totalBoughtUSDT }
+    var totalBoughtQuantity: Double { fifoResult.totalBoughtQuantity }
     var realizedPnL: Double { fifoResult.realizedPnL }
 
     static let empty = MarginFIFOResult(
@@ -84,6 +103,8 @@ nonisolated func fifoCompute(_ trades: [FIFOTrade]) -> FIFOResult {
 
     var lots: [BuyLot] = []
     var realizedPnL: Double = 0
+    var totalBoughtUSDT: Double = 0
+    var totalBoughtQuantity: Double = 0
 
     for trade in trades {
         if trade.isBuyer {
@@ -92,16 +113,24 @@ nonisolated func fifoCompute(_ trades: [FIFOTrade]) -> FIFOResult {
                 qty -= trade.commission
             }
             if qty > epsilon {
-                // When commission is paid in the base asset, the lot price must be
-                // inflated so that `lot.price * lot.remainingQuantity` covers the
-                // total USD spent on the buy, including commission.
                 let lotPrice: Double
+                let usdtSpent: Double
                 if trade.commissionAsset == trade.asset {
+                    // Base-asset commission: quantity is reduced, lot price is inflated
                     lotPrice = trade.price * trade.quantity / qty
+                    usdtSpent = trade.price * trade.quantity
+                } else if trade.commissionAsset == "USDT" || trade.commission > 0 {
+                    // Quote-asset commission: full quantity received, but total USD
+                    // spent includes the commission cost.
+                    lotPrice = (trade.price * trade.quantity + trade.commission) / qty
+                    usdtSpent = trade.price * trade.quantity + trade.commission
                 } else {
                     lotPrice = trade.price
+                    usdtSpent = trade.price * trade.quantity
                 }
                 lots.append(BuyLot(price: lotPrice, remainingQuantity: qty))
+                totalBoughtUSDT += usdtSpent
+                totalBoughtQuantity += qty
             }
         } else {
             var sellQty = trade.quantity
@@ -143,7 +172,9 @@ nonisolated func fifoCompute(_ trades: [FIFOTrade]) -> FIFOResult {
         totalRemainingQuantity: totalRemainingQty,
         weightedAvgBuyPrice: weightedAvg,
         totalInvestedUSDT: totalInvested,
-        realizedPnL: realizedPnL
+        realizedPnL: realizedPnL,
+        totalBoughtUSDT: totalBoughtUSDT,
+        totalBoughtQuantity: totalBoughtQuantity
     )
 }
 
@@ -167,6 +198,8 @@ private func fifoComputeBreakdowns(
                 let lotPrice: Double
                 if trade.commissionAsset == trade.asset {
                     lotPrice = trade.price * trade.quantity / qty
+                } else if trade.commissionAsset == "USDT" || trade.commission > 0 {
+                    lotPrice = (trade.price * trade.quantity + trade.commission) / qty
                 } else {
                     lotPrice = trade.price
                 }

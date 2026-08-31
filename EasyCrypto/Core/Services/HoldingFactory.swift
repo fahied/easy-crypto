@@ -24,7 +24,10 @@ nonisolated enum HoldingFactory {
         marginAdjustedPnL: Double? = nil,
         liquidationPrice: Double? = nil
     ) -> Holding {
-        let avgBuyPrice = fifo.weightedAvgBuyPrice
+        // simpleAvgBuyPrice = total USD spent on all buys / total qty received.
+        // This never changes after sells — it matches Binance's "Avg Buy" display.
+        // Falls back to weightedAvgBuyPrice when no buys exist (0 for both).
+        let avgBuyPrice = fifo.simpleAvgBuyPrice
         let hasCostBasis = avgBuyPrice > 0
         let invested = hasCostBasis ? avgBuyPrice * quantity : 0
         let currentValue = quantity * currentPrice

@@ -149,6 +149,7 @@ def fifo_avg_buy(trades: list[dict]) -> dict:
     sorted_trades = sorted(trades, key=lambda t: int(t.get("time", 0)))
 
     lots: list[dict] = []  # {price, remaining_qty}
+    total_gross_invested = 0.0  # sum of (price * qty) for ALL buys, before commission
     total_buy_qty = 0.0
     total_sell_qty = 0.0
     total_commission = 0.0
@@ -165,19 +166,32 @@ def fifo_avg_buy(trades: list[dict]) -> dict:
         if t.get("isBuyer", False):
             buy_count += 1
             total_buy_qty += qty
+            total_gross_invested += price * qty
             net_qty = qty
-            if commission_asset == t.get("quoteAsset", ""):
+            # Binance takes commission in the BASE asset (e.g. BTC for BTCUSDT).
+            # Reduce lot quantity by the commission, and inflate lot price so that
+            # lot.price * lot.remaining_qty covers the full USD spend including fees.
+            if commission_asset == t.get("asset", ""):
                 net_qty = qty - commission
                 total_commission += commission
-            if net_qty > 1e-10:
-                lots.append({"price": price, "remaining_qty": net_qty})
+            if net_qty > 1e-12:
+                if commission_asset == t.get("asset", ""):
+                    lot_price = price * qty / net_qty
+                    usdt_spent = price * qty
+                elif commission_asset == "USDT" or commission > 0:
+                    lot_price = (price * qty + commission) / net_qty
+                    usdt_spent = price * qty + commission
+                else:
+                    lot_price = price
+                    usdt_spent = price * qty
+                lots.append({"price": lot_price, "remaining_qty": net_qty})
         else:
             sell_count += 1
             total_sell_qty += qty
             # FIFO consume
             remaining = qty
-            while remaining > 1e-10 and lots:
-                if lots[0]["remaining_qty"] <= remaining + 1e-10:
+            while remaining > 1e-12 and lots:
+                if lots[0]["remaining_qty"] <= remaining + 1e-12:
                     remaining -= lots[0]["remaining_qty"]
                     consumed_lots += 1
                     lots.pop(0)
@@ -185,20 +199,21 @@ def fifo_avg_buy(trades: list[dict]) -> dict:
                     lots[0]["remaining_qty"] -= remaining
                     remaining = 0
 
-    # Compute weighted avg from remaining lots
+    # Compute weighted avg from remaining lots (FIFO-aware)
     total_invested = sum(l["price"] * l["remaining_qty"] for l in lots)
     total_remaining_qty = sum(l["remaining_qty"] for l in lots)
     weighted_avg = total_invested / total_remaining_qty if total_remaining_qty > 0 else 0.0
 
-    # Naive avg (gross / total_buy_qty) — for comparison
-    simple_avg = sum(l["price"] * l["remaining_qty"] for l in lots) / total_remaining_qty if total_remaining_qty > 0 else 0.0
+    # Naive avg: gross USD spent on ALL buys / gross qty bought (ignores sells, fees)
+    naive_avg = total_gross_invested / total_buy_qty if total_buy_qty > 0 else 0.0
 
     return {
         "total_buy_qty": total_buy_qty,
         "total_sell_qty": total_sell_qty,
         "total_commission": total_commission,
-        "gross_invested": sum(l["price"] * l["remaining_qty"] for l in lots),  # cost of remaining lots
+        "gross_invested": total_gross_invested,
         "weighted_avg_fifo": weighted_avg,
+        "naive_avg": naive_avg,
         "total_remaining_qty": total_remaining_qty,
         "remaining_lots": len(lots),
         "consumed_lots": consumed_lots,
@@ -252,6 +267,7 @@ def print_result(symbol: str, r: dict) -> None:
     print(f"  Lots consumed by FIFO: {r['consumed_lots']}")
     print(f"  Lots remaining:        {r['remaining_lots']}")
     print(f"  FIFO avg buy price:    {r['weighted_avg_fifo']:.6f}")
+    print(f"  Naive avg (gross/qty): {r['naive_avg']:.6f}")
     print(f"{'─' * 64}")
 
     if r["buys"]:

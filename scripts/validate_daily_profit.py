@@ -4,7 +4,9 @@ FIFO daily profit validator — mirrors EasyCrypto's Trade History tab exactly.
 
 Applies the same FIFO engine as Swift fifoComputeBreakdowns():
   - epsilon = 1.0 (dust filter)
-  - Buy lots at raw trade.price (no base-asset commission inflation)
+  - Buy lots at inflated price when commission is in base asset:
+        lotPrice = trade.price * trade.quantity / (trade.quantity - commission)
+    This ensures lot.price * lot.remaining covers the total USD spent including commission.
   - Fee-in-base-asset consumed from lot (not from proceeds)
   - USDT commission deducted from realized PnL
 
@@ -28,11 +30,14 @@ def fifo_compute_breakdowns(trades):
     """
     Run FIFO over trades in chronological order.
     Returns list parallel to trades: None for buys, dict for sells.
+    Tracks total USD spent for simple avg buy price calculation.
     """
     epsilon = 1.0
 
     lots = []               # [{"price": float, "remaining": float}]
     breakdowns = []
+    total_bought_usdt = 0.0
+    total_bought_qty = 0.0
 
     for trade in trades:
         if trade["isBuyer"]:
@@ -40,7 +45,18 @@ def fifo_compute_breakdowns(trades):
             if trade["commissionAsset"] == trade["asset"]:
                 qty -= trade["commission"]
             if qty > epsilon:
-                lots.append({"price": trade["price"], "remaining": qty})
+                if trade["commissionAsset"] == trade["asset"]:
+                    lot_price = trade["price"] * trade["quantity"] / qty
+                    usdt_spent = trade["price"] * trade["quantity"]
+                elif trade["commissionAsset"] == "USDT" or trade["commission"] > 0:
+                    lot_price = (trade["price"] * trade["quantity"] + trade["commission"]) / qty
+                    usdt_spent = trade["price"] * trade["quantity"] + trade["commission"]
+                else:
+                    lot_price = trade["price"]
+                    usdt_spent = trade["price"] * trade["quantity"]
+                lots.append({"price": lot_price, "remaining": qty})
+                total_bought_usdt += usdt_spent
+                total_bought_qty += qty
             breakdowns.append(None)
 
         else:
@@ -250,9 +266,13 @@ def fetch_trades_for_date(date_str):
             capture_output=True, text=True, timeout=300,
             env={**os.environ, "PYTHONUNBUFFERED": "1"}
         )
+        # Always show bash output for debugging
+        if result.stdout:
+            print(result.stdout)
+        if result.stderr:
+            print(result.stderr, file=sys.stderr)
         if result.returncode != 0:
-            print(f"ERROR: bash script failed (exit {result.returncode}):", file=sys.stderr)
-            print(result.stderr[-500:] if result.stderr else "", file=sys.stderr)
+            print(f"ERROR: bash script failed (exit {result.returncode})", file=sys.stderr)
             sys.exit(1)
     except FileNotFoundError:
         print("ERROR: bash not found.", file=sys.stderr)
