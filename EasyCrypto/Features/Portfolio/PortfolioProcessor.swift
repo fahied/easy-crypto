@@ -14,15 +14,18 @@ class PortfolioProcessor: Processor {
     private let tradeImportService: TradeImportService
     private let priceService: PriceService
     private let fifoCalculator: FIFOCalculator
+    private let apiClient: BinanceAPIClient
     private let balanceService: BalanceService
     private let marginTradeImportService: MarginTradeImportService
     private let marginBalanceService: MarginBalanceService
+    private let modelContainer: ModelContainer
     private let modelContext: ModelContext
 
     init(
         tradeImportService: TradeImportService,
         priceService: PriceService,
         fifoCalculator: FIFOCalculator,
+        apiClient: BinanceAPIClient,
         modelContainer: ModelContainer,
         balanceService: BalanceService = .noop,
         marginTradeImportService: MarginTradeImportService = .noop,
@@ -31,9 +34,11 @@ class PortfolioProcessor: Processor {
         self.tradeImportService = tradeImportService
         self.priceService = priceService
         self.fifoCalculator = fifoCalculator
+        self.apiClient = apiClient
         self.balanceService = balanceService
         self.marginTradeImportService = marginTradeImportService
         self.marginBalanceService = marginBalanceService
+        self.modelContainer = modelContainer
         self.modelContext = ModelContext(modelContainer)
     }
 
@@ -49,7 +54,18 @@ class PortfolioProcessor: Processor {
             state.sortBy = by
         case .showInvestedAssets:
             await handleShowInvestedAssets()
+        case .showAssetDetail(let asset, let tradingMode):
+            state.selectedAssetDetail = SelectedAssetDetail(asset: asset, tradingMode: tradingMode)
         }
+    }
+
+    func makeCoinDetailProcessor() -> CoinDetailProcessor {
+        CoinDetailProcessor(
+            apiClient: apiClient,
+            priceService: priceService,
+            fifoCalculator: fifoCalculator,
+            modelContainer: modelContainer
+        )
     }
 
     // MARK: - Load from Persisted Data
@@ -191,22 +207,31 @@ class PortfolioProcessor: Processor {
             let rows: [InvestedAssetRow] = (spot + cross + isolated)
                 .filter { $0.totalInvestedUSDT > 0 }
                 .map { holding in
-                    InvestedAssetRow(
+                    let pnl = holding.currentValueUSDT - holding.totalInvestedUSDT
+                    let pnlPercent = holding.totalInvestedUSDT > 0
+                        ? (pnl / holding.totalInvestedUSDT) * 100 : 0
+                    return InvestedAssetRow(
                         asset: holding.asset,
                         tradingMode: holding.tradingMode,
                         amountInvestedUSDT: holding.totalInvestedUSDT,
-                        currentValueUSDT: holding.currentValueUSDT
+                        currentValueUSDT: holding.currentValueUSDT,
+                        unrealizedPnL: pnl,
+                        unrealizedPnLPercent: pnlPercent
                     )
                 }
                 .sorted { $0.amountInvestedUSDT > $1.amountInvestedUSDT }
 
             let totalInvested = rows.reduce(0.0) { $0 + $1.amountInvestedUSDT }
             let totalCurrent = rows.reduce(0.0) { $0 + $1.currentValueUSDT }
+            let totalPnL = totalCurrent - totalInvested
+            let totalPnLPercent = totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0
 
             state.investedAssetsDestination = InvestedAssetsDestination(
                 assets: rows,
                 totalInvested: totalInvested,
-                totalCurrentValue: totalCurrent
+                totalCurrentValue: totalCurrent,
+                totalPnL: totalPnL,
+                totalPnLPercent: totalPnLPercent
             )
         } catch {
             state.error = error.localizedDescription

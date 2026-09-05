@@ -17,8 +17,9 @@ nonisolated enum UnrealizedProfit {
         using calculator: FIFOCalculator
     ) -> Double {
         let result = calculator.calculate(trades)
-        guard result.totalRemainingQuantity > 0 else { return 0 }
-        let invested = result.weightedAvgBuyPrice * result.totalRemainingQuantity
-        return result.totalRemainingQuantity * currentPrice - invested
+        let invested = result.totalInvestedUSDT
+        let qty = result.totalRemainingQuantity
+        guard qty > 0 else { return 0 }
+        return qty * currentPrice - invested
     }
 }

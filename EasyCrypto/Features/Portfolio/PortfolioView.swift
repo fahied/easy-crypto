@@ -12,6 +12,9 @@ struct PortfolioView: View {
     @State private var investedAssetsRoute = false
     @State private var investedAssetsSnapshot: InvestedAssetsDestination?
 
+    @State private var selectedAssetRoute = false
+    @State private var selectedAssetSnapshot: SelectedAssetDetail?
+
     private var state: PortfolioState { processor.state }
 
     var body: some View {
@@ -30,13 +33,33 @@ struct PortfolioView: View {
             .navigationTitle("Portfolio")
             .navigationDestination(isPresented: $investedAssetsRoute) {
                 if let destination = investedAssetsSnapshot {
-                    InvestedAssetsView(destination: destination)
+                    InvestedAssetsView(
+                        destination: destination,
+                        onSelectAsset: { asset, tradingMode in
+                            Task { await processor.handle(.showAssetDetail(asset: asset, tradingMode: tradingMode)) }
+                        }
+                    )
                 }
             }
             .onChange(of: state.investedAssetsDestination) { _, newValue in
                 if let destination = newValue {
                     investedAssetsSnapshot = destination
                     investedAssetsRoute = true
+                }
+            }
+            .navigationDestination(isPresented: $selectedAssetRoute) {
+                if let detail = selectedAssetSnapshot {
+                    CoinDetailView(
+                        processor: processor.makeCoinDetailProcessor(),
+                        asset: detail.asset,
+                        tradingMode: detail.tradingMode
+                    )
+                }
+            }
+            .onChange(of: state.selectedAssetDetail) { _, newValue in
+                if let detail = newValue {
+                    selectedAssetSnapshot = detail
+                    selectedAssetRoute = true
                 }
             }
             .toolbar {
@@ -210,6 +233,7 @@ struct PortfolioView: View {
         tradeImportService: .noop,
         priceService: .noop,
         fifoCalculator: .live,
+        apiClient: .noop,
         modelContainer: container
     )
     processor.state = PortfolioState(
@@ -230,6 +254,7 @@ struct PortfolioView: View {
         tradeImportService: .noop,
         priceService: .noop,
         fifoCalculator: .live,
+        apiClient: .noop,
         modelContainer: container
     )
     return PortfolioView(processor: processor)
@@ -246,6 +271,7 @@ struct PortfolioView: View {
         tradeImportService: .noop,
         priceService: .noop,
         fifoCalculator: .live,
+        apiClient: .noop,
         modelContainer: container
     )
     processor.state.isLoading = true
@@ -263,6 +289,7 @@ struct PortfolioView: View {
         tradeImportService: .noop,
         priceService: .noop,
         fifoCalculator: .live,
+        apiClient: .noop,
         modelContainer: container
     )
     processor.state.error = "Failed to connect to Binance API. Please check your network connection and try again."

@@ -23,6 +23,7 @@ private func makeProcessor(
     tradeImportService: TradeImportService = .noop,
     priceService: PriceService = .noop,
     fifoCalculator: FIFOCalculator = .live,
+    apiClient: BinanceAPIClient = .noop,
     modelContainer: ModelContainer,
     balanceService: BalanceService = .noop,
     marginTradeImportService: MarginTradeImportService = .noop,
@@ -32,6 +33,7 @@ private func makeProcessor(
         tradeImportService: tradeImportService,
         priceService: priceService,
         fifoCalculator: fifoCalculator,
+        apiClient: apiClient,
         modelContainer: modelContainer,
         balanceService: balanceService,
         marginTradeImportService: marginTradeImportService,
@@ -983,5 +985,92 @@ struct PortfolioInvestedAssetsTests {
         // totalCurrentValue should match individual current values
         #expect(destination.totalCurrentValue == 65000.0)
         #expect(destination.totalInvested == 50000.0)
+    }
+
+    @Test("When rows are computed, then unrealizedPnL and unrealizedPnLPercent are populated per asset")
+    func rowsContainUnrealizedPnL() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+
+        // BTC profit: bought 50k, now 65k → +15k (+30%)
+        context.insert(Trade(
+            binanceTradeId: 1, symbol: "BTCUSDT", asset: "BTC",
+            price: 50000, quantity: 1.0, quoteQuantity: 50000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+            isBuyer: true, orderId: 100,
+            tradingMode: .spot
+        ))
+        // ETH loss: bought 30k, now 21k → -9k (-30%)
+        context.insert(Trade(
+            binanceTradeId: 2, symbol: "ETHUSDT", asset: "ETH",
+            price: 3000, quantity: 10.0, quoteQuantity: 30000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_100_000),
+            isBuyer: true, orderId: 101,
+            tradingMode: .spot
+        ))
+        try context.save()
+
+        let processor = try makeProcessor(
+            tradeImportService: .noop,
+            priceService: PriceService(fetchPrices: { _ in ["BTCUSDT": 65000.0, "ETHUSDT": 2100.0] }),
+            modelContainer: container,
+            balanceService: BalanceService(fetchBalances: { ["BTC": 1.0, "ETH": 10.0] })
+        )
+
+        await processor.handle(.showInvestedAssets)
+
+        let destination = try #require(processor.state.investedAssetsDestination)
+        #expect(destination.assets.count == 2)
+
+        let btc = try #require(destination.assets.first { $0.asset == "BTC" })
+        #expect(btc.unrealizedPnL == 15000.0)
+        #expect(abs(btc.unrealizedPnLPercent - 30.0) < 0.01)
+
+        let eth = try #require(destination.assets.first { $0.asset == "ETH" })
+        #expect(eth.unrealizedPnL == -9000.0)
+        #expect(abs(eth.unrealizedPnLPercent - (-30.0)) < 0.01)
+    }
+
+    @Test("When rows are computed, then totalPnL is the sum of all row P&L values")
+    func totalPnLIsSumOfRows() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+
+        context.insert(Trade(
+            binanceTradeId: 1, symbol: "BTCUSDT", asset: "BTC",
+            price: 50000, quantity: 1.0, quoteQuantity: 50000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+            isBuyer: true, orderId: 100,
+            tradingMode: .spot
+        ))
+        context.insert(Trade(
+            binanceTradeId: 2, symbol: "ETHUSDT", asset: "ETH",
+            price: 3000, quantity: 10.0, quoteQuantity: 30000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_100_000),
+            isBuyer: true, orderId: 101,
+            tradingMode: .spot
+        ))
+        try context.save()
+
+        let processor = try makeProcessor(
+            tradeImportService: .noop,
+            priceService: PriceService(fetchPrices: { _ in ["BTCUSDT": 65000.0, "ETHUSDT": 2100.0] }),
+            modelContainer: container,
+            balanceService: BalanceService(fetchBalances: { ["BTC": 1.0, "ETH": 10.0] })
+        )
+
+        await processor.handle(.showInvestedAssets)
+
+        let destination = try #require(processor.state.investedAssetsDestination)
+        let expectedPnL = destination.assets.reduce(0.0) { $0 + $1.unrealizedPnL }
+        #expect(destination.totalPnL == expectedPnL)
+        // totalPnL = current - invested = (65000 + 21000) - (50000 + 30000) = 86000 - 80000 = 6000
+        #expect(destination.totalPnL == 6000.0)
+        // totalPnLPercent = 6000 / 80000 * 100 = 7.5%
+        #expect(abs(destination.totalPnLPercent - 7.5) < 0.01)
     }
 }

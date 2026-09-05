@@ -17,4 +17,5 @@ enum PortfolioIntent: Intent {
     case loadPersisted
     case sortHoldings(by: SortCriteria)
     case showInvestedAssets
+    case showAssetDetail(asset: String, tradingMode: TradingMode)
 }

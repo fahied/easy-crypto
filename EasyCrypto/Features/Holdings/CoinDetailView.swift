@@ -10,6 +10,7 @@ import Charts
 struct CoinDetailView: View {
     @State var processor: CoinDetailProcessor
     let asset: String
+    let tradingMode: TradingMode
 
     private var state: CoinDetailState { processor.state }
 
@@ -26,7 +27,7 @@ struct CoinDetailView: View {
         .navigationTitle(asset)
         .task {
             guard state.holding == nil else { return }
-            await processor.handle(.loadDetail(asset: asset))
+            await processor.handle(.loadDetail(asset: asset, tradingMode: tradingMode))
         }
     }
 
@@ -254,7 +255,7 @@ struct CoinDetailView: View {
         klines: PreviewSampleData.sampleKlines
     )
     return NavigationStack {
-        CoinDetailView(processor: processor, asset: "BTC")
+        CoinDetailView(processor: processor, asset: "BTC", tradingMode: .spot)
     }
     .preferredColorScheme(.dark)
 }
@@ -276,7 +277,7 @@ struct CoinDetailView: View {
         trades: PreviewSampleData.sampleTrades.filter { $0.asset == "ETH" }
     )
     return NavigationStack {
-        CoinDetailView(processor: processor, asset: "ETH")
+        CoinDetailView(processor: processor, asset: "ETH", tradingMode: .spot)
     }
     .preferredColorScheme(.dark)
 }
@@ -294,7 +295,7 @@ struct CoinDetailView: View {
     )
     processor.state.isLoading = true
     return NavigationStack {
-        CoinDetailView(processor: processor, asset: "BTC")
+        CoinDetailView(processor: processor, asset: "BTC", tradingMode: .spot)
     }
     .preferredColorScheme(.dark)
 }

@@ -5,14 +5,11 @@
 
 import Foundation
 
-/// Builds a `Holding` using the authoritative wallet `quantity` for display, while
-/// deriving cost basis, average buy price, and realized P&L from FIFO over the
-/// trade history.
+/// Builds a `Holding` using the authoritative wallet `quantity` for display.
 ///
-/// Unrealized P&L is recomputed against the wallet quantity:
-/// `(currentPrice − weightedAvgBuyPrice) × quantity`. When there are no buy lots
-/// (e.g. an airdrop/reward with no purchase history, or USDT), cost basis is treated
-/// as unavailable: invested and unrealized P&L are 0.
+/// Invested is the raw sum of all buy order values (`price × quantity`) from
+/// trade history — no FIFO, no averaging, unaffected by sells. Current value
+/// is the wallet balance times the live ticker. P&L is the simple difference.
 nonisolated enum HoldingFactory {
     static func make(
         asset: String,
@@ -24,14 +21,11 @@ nonisolated enum HoldingFactory {
         marginAdjustedPnL: Double? = nil,
         liquidationPrice: Double? = nil
     ) -> Holding {
-        // weightedAvgBuyPrice = cost basis of remaining lots only.
-        // This reflects what was actually paid for what is currently held.
-        // Falls back to 0 when no lots remain.
-        let avgBuyPrice = fifo.weightedAvgBuyPrice
-        let hasCostBasis = avgBuyPrice > 0
-        let invested = hasCostBasis ? avgBuyPrice * quantity : 0
-        let currentValue = quantity * currentPrice
-        let unrealizedPnL = hasCostBasis ? (currentPrice - avgBuyPrice) * quantity : 0
+        let invested = fifo.totalInvestedUSDT
+        let fifoQuantity = fifo.totalRemainingQuantity
+        let avgBuyPrice = fifoQuantity > 0 ? invested / fifoQuantity : 0
+        let currentValue = fifoQuantity * currentPrice
+        let unrealizedPnL = invested > 0 ? currentValue - invested : 0
         let unrealizedPnLPercent = invested > 0 ? (unrealizedPnL / invested) * 100 : 0
 
         return Holding(

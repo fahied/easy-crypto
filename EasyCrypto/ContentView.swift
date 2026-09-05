@@ -46,6 +46,7 @@ struct ContentView: View {
                             tradeImportService: tradeImportService,
                             priceService: priceService,
                             fifoCalculator: fifoCalculator,
+                            apiClient: apiClient,
                             modelContainer: modelContainer,
                             balanceService: BalanceService.live(apiClient: apiClient),
                             marginTradeImportService: MarginTradeImportService.live(apiClient: apiClient),
