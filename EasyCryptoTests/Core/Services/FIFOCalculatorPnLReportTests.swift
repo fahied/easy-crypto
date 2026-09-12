@@ -6,6 +6,7 @@
 //  pnl_report.py script against the exported Binance CSV data.
 //
 
+import Foundation
 import Testing
 @testable import EasyCrypto
 
