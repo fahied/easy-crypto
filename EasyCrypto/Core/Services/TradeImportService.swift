@@ -52,9 +52,10 @@ extension TradeImportService {
     /// Assets the user actively trades. Always included in sync regardless of
     /// current balance — closed positions need their trade history preserved.
     nonisolated static let knownAssets: [String] = [
-        "ADA", "ALLO", "BANK", "BCH", "BNB", "BTC", "DEXE", "ETH",
-        "HYPER", "IOTA", "LTC", "MET", "MMT", "NEAR", "SENT",
-        "SOL", "TRX", "XRP"
+        "ACE", "ADA", "AED", "ALLO", "BANK", "BCH", "BNB", "BTC",
+        "BTCUSDC", "DEXE", "ETH", "ETHUSDC", "HYPER", "IOTA", "IOTX",
+        "LTC", "MET", "MMT", "NEAR", "SENT", "SOL", "TON", "TRX",
+        "UNI", "USDC", "XRP"
     ]
 }
 
