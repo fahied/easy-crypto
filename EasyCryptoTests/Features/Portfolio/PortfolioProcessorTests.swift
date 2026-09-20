@@ -811,6 +811,55 @@ struct PortfolioInvestedAssetsTests {
         #expect(destination.assets.first?.amountInvestedUSDT == 15000.0)
     }
 
+    @Test("When an asset has trade history but zero live balance, then it is excluded from invested assets")
+    func zeroBalanceExcludesFromInvestedAssets() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+
+        // ETH has trade history (bought at 3k), but live balance is 0 — asset was sold off
+        context.insert(Trade(
+            binanceTradeId: 1, symbol: "ETHUSDT", asset: "ETH",
+            price: 3000, quantity: 10.0, quoteQuantity: 30000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+            isBuyer: true, orderId: 100,
+            tradingMode: .spot
+        ))
+        context.insert(Trade(
+            binanceTradeId: 2, symbol: "ETHUSDT", asset: "ETH",
+            price: 3500, quantity: 10.0, quoteQuantity: 35000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_100_000),
+            isBuyer: false, orderId: 101,
+            tradingMode: .spot
+        ))
+        // BTC is still actively held
+        context.insert(Trade(
+            binanceTradeId: 3, symbol: "BTCUSDT", asset: "BTC",
+            price: 50000, quantity: 1.0, quoteQuantity: 50000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_200_000),
+            isBuyer: true, orderId: 102,
+            tradingMode: .spot
+        ))
+        try context.save()
+
+        let processor = try makeProcessor(
+            tradeImportService: .noop,
+            priceService: PriceService(fetchPrices: { _ in ["BTCUSDT": 65000.0, "ETHUSDT": 3500.0] }),
+            modelContainer: container,
+            balanceService: BalanceService(fetchBalances: { ["BTC": 1.0] })
+            // ETH balance is 0 (not in the map) — asset no longer held
+        )
+
+        await processor.handle(.showInvestedAssets)
+
+        let destination = try #require(processor.state.investedAssetsDestination)
+        #expect(destination.assets.count == 1)
+        #expect(destination.assets.first?.asset == "BTC")
+        #expect(destination.assets.first?.amountInvestedUSDT == 50000.0)
+    }
+
     @Test("When the same asset exists in spot and cross margin, then both rows appear")
     func sameAssetAcrossModesAppearsTwice() async throws {
         let container = try makeContainer()

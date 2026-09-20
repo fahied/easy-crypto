@@ -128,15 +128,15 @@ struct ModeTests {
 @Suite("Given a margin trade import service generating sync updates")
 struct MarginSyncMetadataTests {
 
-    @Test("When crossMargin, then sync update uses 'cross' as the key")
+    @Test("When crossMargin, then sync update uses the symbol as the key")
     func crossMarginSyncKey() async throws {
         let client = makeClient(
             tradesForSymbol: { symbol, _ in symbol == "BTCUSDT" ? [makeMarginTrade(id: 50, symbol: symbol)] : [] }
         )
         let service = MarginTradeImportService.live(apiClient: client)
-        let result = try await service.sync(.crossMargin, ["cross": 10])
+        let result = try await service.sync(.crossMargin, ["BTCUSDT": 10])
 
-        let update = try #require(result.syncUpdates.first { $0.symbol == "cross" })
+        let update = try #require(result.syncUpdates.first { $0.symbol == "BTCUSDT" })
         #expect(update.lastTradeId == 50)
     }
 
@@ -158,7 +158,7 @@ struct MarginSyncMetadataTests {
             tradesForSymbol: { symbol, _ in symbol == "BTCUSDT" ? [makeMarginTrade(id: 51, symbol: symbol)] : [] }
         )
         let service = MarginTradeImportService.live(apiClient: client)
-        let result = try await service.sync(.crossMargin, ["cross": 50])
+        let result = try await service.sync(.crossMargin, ["BTCUSDT": 50])
 
         #expect(result.mappedTrades.count == 1)
         #expect(result.mappedTrades.first?.binanceTradeId == 51)
@@ -352,7 +352,7 @@ struct MarginErrorTests {
         let service = MarginTradeImportService.live(apiClient: client)
 
         do {
-            _ = try await service.sync(.crossMargin, ["cross": 0])
+            _ = try await service.sync(.crossMargin, ["BTCUSDT": 0])
             Issue.record("Expected error to propagate")
         } catch let error as BinanceError {
             if case .networkError = error {
@@ -410,7 +410,7 @@ struct MarginErrorTests {
         )
 
         let service = MarginTradeImportService.live(apiClient: client)
-        let result = try await service.sync(.crossMargin, ["cross": 0])
+        let result = try await service.sync(.crossMargin, ["BTCUSDT": 0])
 
         // ETH should still succeed despite BTC failure
         #expect(result.mappedTrades.count == 1)
@@ -425,13 +425,13 @@ struct MarginPreviewNoopTests {
 
     @Test("When using preview service, then returns sample data")
     func previewReturnsSampleData() async throws {
-        let result = try await MarginTradeImportService.preview.sync(.crossMargin, ["cross": 0])
+        let result = try await MarginTradeImportService.preview.sync(.crossMargin, ["BTCUSDT": 0])
         #expect(!result.mappedTrades.isEmpty)
     }
 
     @Test("When using noop service, then returns empty result")
     func noopReturnsEmpty() async throws {
-        let result = try await MarginTradeImportService.noop.sync(.crossMargin, ["cross": 0])
+        let result = try await MarginTradeImportService.noop.sync(.crossMargin, ["BTCUSDT": 0])
         #expect(result.mappedTrades.isEmpty)
         #expect(result.syncUpdates.isEmpty)
     }

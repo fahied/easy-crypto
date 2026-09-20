@@ -18,15 +18,14 @@ nonisolated struct MarginTradeImportService: Sendable {
     ///   - mode: `.crossMargin` or `.isolatedMargin` — selects the margin endpoint
     ///     and determines how `existingSync` keys are interpreted.
     ///   - existingSync: Key map for incremental sync.
-    ///     - Cross-margin: a single `"cross"` key → global lastTradeId.
-    ///     - Isolated-margin: isolated margin key (the symbol, e.g. `"BTCUSDT"`)
-    ///       → per-symbol lastTradeId.
+    ///     - Cross-margin: per-symbol keys (e.g. `"BTCUSDT"`) → per-symbol lastTradeId.
+    ///     - Isolated-margin: per-symbol keys (e.g. `"BTCUSDT"`) → per-symbol lastTradeId.
     ///
     /// - Returns: `TradeImportResult` with mapped trades and sync metadata updates.
     var sync: (_ mode: TradingMode, _ existingSync: [String: Int64]) async throws -> TradeImportResult
 }
 
-// MARK: - Live Implementation
+// MARK: - Service
 
 extension MarginTradeImportService {
     nonisolated private static let logger = Logger(
@@ -77,34 +76,32 @@ extension MarginTradeImportService {
             return netAsset > netAssetThreshold
         }
 
-        let staticAssets = Set(TradeImportService.knownAssets)
-        let knownAssets = Set(
+        let staticSymbols = Set(TradeImportService.knownAssets.map { "\($0)USDT" })
+        let balanceSymbols = Set(filteredBalanceAssets.map { "\($0)USDT" })
+        let knownSymbols = Set(
             existingSync.keys
                 .filter { $0.hasSuffix("USDT") }
-                .map { String($0.dropLast(4)) }
         )
 
-        let assets = Array(
-            staticAssets.union(filteredBalanceAssets).union(knownAssets)
+        let symbols = Array(
+            staticSymbols.union(balanceSymbols).union(knownSymbols)
         )
         .sorted()
 
-        guard !assets.isEmpty else {
-            logger.info("No non-USDT assets found for cross-margin sync")
+        guard !symbols.isEmpty else {
+            logger.info("No non-USDT symbols found for cross-margin sync")
             return .empty
         }
 
-        logger.info("Cross-margin: discovered \(assets.count) assets")
+        logger.info("Cross-margin: discovered \(symbols.count) symbols")
 
         var allTrades: [MappedTrade] = []
         var allSyncUpdates: [SyncUpdate] = []
 
-        let startFromId = existingSync["cross"].map { $0 + 1 }
-        var maxTradeId: Int64?
-        var hasFetched = false
-
-        for (index, asset) in assets.enumerated() {
-            let symbol = "\(asset)USDT"
+        for (index, symbol) in symbols.enumerated() {
+            let asset = String(symbol.dropLast(4))
+            let lastTradeId = existingSync[symbol]
+            let startFromId = lastTradeId.map { $0 + 1 }
 
             do {
                 let assetTrades = try await fetchMarginTradesWithPagination(
@@ -131,9 +128,12 @@ extension MarginTradeImportService {
                 }
                 allTrades.append(contentsOf: mapped)
 
-                if let lastTrade = assetTrades.last, lastTrade.id > (maxTradeId ?? 0) {
-                    maxTradeId = lastTrade.id
-                    hasFetched = true
+                if let lastTrade = assetTrades.last {
+                    allSyncUpdates.append(SyncUpdate(
+                        symbol: symbol,
+                        lastTradeId: lastTrade.id,
+                        syncDate: Date()
+                    ))
                 }
 
                 logger.info("Cross-margin: fetched \(assetTrades.count) trades for \(symbol)")
@@ -142,17 +142,9 @@ extension MarginTradeImportService {
                 continue
             }
 
-            if index < assets.count - 1 {
+            if index < symbols.count - 1 {
                 try? await Task.sleep(for: interRequestDelay)
             }
-        }
-
-        if hasFetched, let lastId = maxTradeId {
-            allSyncUpdates.append(SyncUpdate(
-                symbol: "cross",
-                lastTradeId: lastId,
-                syncDate: Date()
-            ))
         }
 
         return TradeImportResult(
@@ -317,7 +309,8 @@ extension MarginTradeImportService {
                     ),
                 ],
                 syncUpdates: [
-                    SyncUpdate(symbol: "cross", lastTradeId: 1, syncDate: Date()),
+                    SyncUpdate(symbol: "BTCUSDT", lastTradeId: 1, syncDate: Date()),
+                    SyncUpdate(symbol: "ETHUSDT", lastTradeId: 2, syncDate: Date()),
                 ]
             )
         }

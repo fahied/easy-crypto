@@ -11,6 +11,11 @@ import Observation
 class PortfolioProcessor: Processor {
     var state = PortfolioState()
 
+    /// Holdings whose current USD value falls below this floor are hidden from
+    /// the portfolio, invested-assets detail, and holdings tab. Filters out
+    /// near-zero dust that Binance sometimes reports after full closes.
+    nonisolated static let minimumHoldingValue: Double = 1.0
+
     private let tradeImportService: TradeImportService
     private let priceService: PriceService
     private let fifoCalculator: FIFOCalculator
@@ -265,8 +270,9 @@ class PortfolioProcessor: Processor {
             let quantity = balances[asset] ?? 0
             let currentPrice = asset == "USDT" ? 1.0 : (prices["\(asset)USDT"] ?? 0)
             let fifoResult = fifoByAsset[asset] ?? .empty
+            let currentValueUSDT = quantity * currentPrice
 
-            if quantity == 0 && fifoResult.remainingLots.isEmpty { return nil }
+            if currentValueUSDT < Self.minimumHoldingValue { return nil }
 
             return HoldingFactory.make(
                 asset: asset,
@@ -304,11 +310,13 @@ class PortfolioProcessor: Processor {
             let marginResult = fifoCalculator.calculateMargin(assetTrades, [asset: balance?.interest ?? 0])
 
             let quantity = balance?.netAsset ?? marginResult.totalRemainingQuantity
+            let currentPrice = price(of: asset, in: prices)
+            let currentValueUSDT = quantity * currentPrice
             let marginAdjustedPnL: Double? = marginResult.marginAdjustedRealizedPnL > 0 || marginResult.totalBorrowingFees > 0
                 ? marginResult.marginAdjustedRealizedPnL
                 : nil
 
-            if quantity > 0 || marginResult.isMarginPosition {
+            if currentValueUSDT >= Self.minimumHoldingValue || marginResult.isMarginPosition {
                 holdings.append(HoldingFactory.make(
                     asset: asset,
                     quantity: quantity,
@@ -351,11 +359,13 @@ class PortfolioProcessor: Processor {
             let marginResult = fifoCalculator.calculateMargin(assetTrades, borrowingFees)
 
             let quantity = netAssetByAsset[asset] ?? marginResult.totalRemainingQuantity
+            let currentPrice = price(of: asset, in: prices)
+            let currentValueUSDT = quantity * currentPrice
             let marginAdjustedPnL: Double? = marginResult.marginAdjustedRealizedPnL > 0 || marginResult.totalBorrowingFees > 0
                 ? marginResult.marginAdjustedRealizedPnL
                 : nil
 
-            if quantity > 0 || marginResult.isMarginPosition {
+            if currentValueUSDT >= Self.minimumHoldingValue || marginResult.isMarginPosition {
                 holdings.append(HoldingFactory.make(
                     asset: asset,
                     quantity: quantity,

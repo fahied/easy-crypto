@@ -229,19 +229,18 @@ class HoldingsProcessor: Processor {
                 uniquingKeysWith: { first, _ in first }
             )
 
-            // Only include assets with a positive net asset in the cross-margin account.
-            // Assets that appear in trade history but have zero balance are excluded.
-            var quantities: [String: Double] = [:]
-            var interest: [String: Double] = [:]
-            let threshold: Double = 0.000001
-            for (asset, balance) in balanceByAsset {
-                if balance.netAsset > threshold {
-                    quantities[asset] = balance.netAsset
-                    if balance.interest > 0 {
-                        interest[asset] = balance.interest
-                    }
+            // Pass all positive net assets through; buildHoldings applies the
+            // USD-value floor so near-zero dust is filtered consistently.
+            let quantities = Dictionary(
+                uniqueKeysWithValues: balanceByAsset.values.compactMap { balance in
+                    balance.netAsset > 0 ? (balance.asset, balance.netAsset) : nil
                 }
-            }
+            )
+            let interest = Dictionary(
+                uniqueKeysWithValues: balanceByAsset.values.compactMap { balance in
+                    balance.interest > 0 ? (balance.asset, balance.interest) : nil
+                }
+            )
             return (quantities, interest)
         }
     }
@@ -256,8 +255,12 @@ class HoldingsProcessor: Processor {
         mode: TradingMode = .spot
     ) -> [Holding] {
         var holdings: [Holding] = []
-        for (asset, quantity) in quantities where quantity > 0.001 {
+        for (asset, quantity) in quantities {
             let currentPrice = asset == "USDT" ? 1.0 : (prices["\(asset)USDT"] ?? 0)
+            let currentValueUSDT = quantity * currentPrice
+
+            if currentValueUSDT < PortfolioProcessor.minimumHoldingValue { continue }
+
             let fifo = fifoByAsset[asset] ?? .empty
             let marginPnL = marginAdjustedPnLByAsset[asset]
             holdings.append(HoldingFactory.make(
