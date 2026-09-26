@@ -75,16 +75,10 @@ struct FIFOCommissionBugFixTests {
 
     @Test("When sell commission is in base asset, then P&L reflects full commission cost")
     func baseAssetSellCommissionFullyDeducted() {
-        // Buy 1.0005 BTC @ 50000 (commission 0.0005 BTC → net 1.000 BTC held)
-        // Wait, let me redo this correctly:
-        // Buy 1.0 BTC @ 50000, sell 0.999 BTC @ 55000 with 0.0005 BTC commission.
-        // sellQty = 0.999 + 0.0005 = 0.9995
-        // consumed = min(1.0, 0.9995) = 0.9995
-        // soldPortion = min(0.9995, 0.999) = 0.999
-        // feePortion = 0.9995 - 0.999 = 0.0005
-        // P&L += 0.999 * (55000 - 50000) = 49950
-        // P&L -= 0.0005 * 50000 = 25
-        // Net P&L = 49925
+        // Buy 1.0 BTC @ 50000 → lot holds 1.0 BTC @ 50000 (fee already deducted on buy).
+        // Sell 0.999 BTC @ 55000 with 0.0005 BTC commission.
+        // Only 0.999 is consumed from lot; fee valued at market price (55000).
+        // P&L = 0.999 * (55000 - 50000) - 0.0005 * 55000 = 49950 - 27.50 = 49922.50
         let trades = [
             makeTrade(price: 50000, quantity: 1.0, isBuyer: true),
             makeTrade(
@@ -95,36 +89,9 @@ struct FIFOCommissionBugFixTests {
         let result = FIFOCalculator.live.calculate(trades)
 
         #expect(result.remainingLots.count == 1)
-        #expect(abs(result.remainingLots[0].remainingQuantity - 0.0005) < 1e-10)
-        let expectedPnL = 0.999 * (55000 - 50000) - 0.0005 * 50000
-        #expect(abs(result.realizedPnL - expectedPnL) < 0.01,
-               "Expected P&L \(expectedPnL), got \(result.realizedPnL)")
-    }
-
-    @Test("When sell commission in base asset exceeds lot quantity, then excess is deducted from proceeds")
-    func baseAssetSellCommissionExceedsLotDeductedFromProceeds() {
-        // Buy 1.0 BTC @ 50000.
-        // Sell 0.5 BTC @ 55000 with 0.6 BTC commission.
-        // sellQty = 0.5 + 0.6 = 1.1 (total to consume)
-        // consumedTotal = 1.0 (all of lot)
-        // soldPortion = min(1.0, 0.5) = 0.5
-        // feePortion = 1.0 - 0.5 = 0.5
-        // excess = 1.1 - 1.0 = 0.1 (commission that couldn't be satisfied by lot)
-        // P&L += 0.5 * (55000 - 50000) = 2500
-        // P&L -= 0.5 * 50000 = 25000
-        // P&L -= excess * lastLotPrice = 0.1 * 50000 = 5000
-        // Net P&L = 2500 - 25000 - 5000 = -22500
-        let trades = [
-            makeTrade(price: 50000, quantity: 1.0, isBuyer: true),
-            makeTrade(
-                price: 55000, quantity: 0.5, isBuyer: false,
-                commission: 0.6, commissionAsset: "BTC"
-            ),
-        ]
-        let result = FIFOCalculator.live.calculate(trades)
-
-        #expect(result.remainingLots.isEmpty)
-        let expectedPnL = 0.5 * (55000 - 50000) - 0.5 * 50000 - 0.1 * 50000
+        #expect(abs(result.remainingLots[0].remainingQuantity - 0.001) < 1e-10,
+               "Remaining lot should be 0.001 (1.0 - 0.999), got \(result.remainingLots[0].remainingQuantity)")
+        let expectedPnL = 0.999 * (55000 - 50000) - 0.0005 * 55000
         #expect(abs(result.realizedPnL - expectedPnL) < 0.01,
                "Expected P&L \(expectedPnL), got \(result.realizedPnL)")
     }

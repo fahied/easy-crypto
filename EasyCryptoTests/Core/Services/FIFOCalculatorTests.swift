@@ -383,8 +383,8 @@ struct FIFOSellCommissionTests {
         #expect(result.realizedPnL == 10000)  // no commission deduction
     }
 
-    @Test("When sell commission is in the base asset, then inventory includes the fee outflow")
-    func sellCommissionInBaseAssetConsumesInventory() {
+    @Test("When sell commission is in the base asset, then fee is valued at market price")
+    func sellCommissionInBaseAssetValuedAtMarket() {
         let trades = [
             makeTrade(price: 50000, quantity: 1.0005, isBuyer: true),
             makeTrade(
@@ -394,12 +394,13 @@ struct FIFOSellCommissionTests {
         ]
         let result = calculator.calculate(trades)
 
-        #expect(result.remainingLots.isEmpty)
-        #expect(result.totalRemainingQuantity == 0)
-        // Buy 1.0005 @ 50000 = 50025 cost basis
-        // Sell 1.0 @ 60000 → proceeds 60000, but 0.0005 BTC commission consumed from lot too
-        // P&L = 60000 - (1.0 + 0.0005) * 50000 = 60000 - 50025 = 9975
-        #expect(abs(result.realizedPnL - 9975) < 0.0001)
+        // Buy creates lot of 1.0005 @ 50000 (no commission deducted — fee was on sell).
+        // Sell consumes 1.0 from lot → remaining lot = 0.0005.
+        // Fee 0.0005 BTC valued at sell price (60000) = 30.00 cost.
+        // P&L = (60000-50000)*1.0 - 0.0005*60000 = 9970.00
+        #expect(result.remainingLots.count == 1)
+        #expect(abs(result.remainingLots[0].remainingQuantity - 0.0005) < 1e-10)
+        #expect(abs(result.realizedPnL - 9970.00) < 0.01)
     }
 }
 

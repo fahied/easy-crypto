@@ -140,6 +140,9 @@ struct HoldingsListView: View {
                 emptyView
             } else {
                 LazyVStack(spacing: Theme.cardSpacing) {
+                    if let error = state.error {
+                        staleDataBanner(error)
+                    }
                     ForEach(state.holdings) { holding in
                         MarginHoldingRow(
                             holding: holding,
@@ -232,6 +235,24 @@ struct HoldingsListView: View {
     }
 
     // MARK: - Error State
+
+    private func staleDataBanner(_ message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption)
+            Text("Showing cached data: \(message)")
+                .font(.caption)
+            Spacer()
+            Button("Retry") {
+                processor.send(.loadHoldings)
+            }
+            .font(.caption.bold())
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.orange.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
 
     private func errorView(_ message: String) -> some View {
         ContentUnavailableView {

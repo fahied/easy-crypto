@@ -31,7 +31,7 @@ struct HoldingsBalanceTests {
             isBuyer: true, orderId: 100
         ))
         // Seed account balance with free=0.6, locked=0.1
-        context.insert(AccountBalance(asset: "BTC", quantity: 0.7, free: 0.6, locked: 0.1))
+        context.insert(AccountBalance(asset: "BTC", quantity: 0.7))
         try context.save()
 
         let processor = HoldingsProcessor(
@@ -63,7 +63,7 @@ struct HoldingsBalanceTests {
             timestamp: Date(timeIntervalSince1970: 1_700_000_000),
             isBuyer: true, orderId: 100
         ))
-        context.insert(AccountBalance(asset: "ETH", quantity: 5.0, free: 5.0, locked: 0.0))
+        context.insert(AccountBalance(asset: "ETH", quantity: 5.0))
         try context.save()
 
         let processor = HoldingsProcessor(
@@ -136,7 +136,7 @@ private func seedTrades(in container: ModelContainer) throws {
         timestamp: Date(timeIntervalSince1970: 1_700_001_000),
         isBuyer: true, orderId: 101
     ))
-    context.insert(AccountBalance(asset: "BTC", quantity: 1.0, free: 1.0, locked: 0.0))
-    context.insert(AccountBalance(asset: "ETH", quantity: 5.0, free: 5.0, locked: 0.0))
+    context.insert(AccountBalance(asset: "BTC", quantity: 1.0))
+    context.insert(AccountBalance(asset: "ETH", quantity: 5.0))
     try context.save()
 }

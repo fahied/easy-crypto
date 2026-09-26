@@ -136,31 +136,27 @@ nonisolated func fifoCompute(_ trades: [FIFOTrade]) -> FIFOResult {
             var sellQty = trade.quantity
             let feeInBaseAsset = trade.commissionAsset == trade.asset ? trade.commission : 0
             var remainingSaleQuantity = trade.quantity
-            sellQty += feeInBaseAsset
             var lastConsumedLotPrice: Double = 0
 
             while sellQty > 0 && !lots.isEmpty {
                 let consumed = min(lots[0].remainingQuantity, sellQty)
-                let soldPortion = min(consumed, remainingSaleQuantity)
-                let feePortion = consumed - soldPortion
+                let soldPortion = consumed
                 lastConsumedLotPrice = lots[0].price
 
                 realizedPnL += soldPortion * (trade.price - lots[0].price)
-                realizedPnL -= feePortion * lots[0].price
 
                 lots[0].remainingQuantity -= consumed
                 sellQty -= consumed
-                remainingSaleQuantity -= soldPortion
 
                 if lots[0].remainingQuantity <= epsilon {
                     lots.removeFirst()
                 }
             }
 
-            // If base-asset commission exceeds what lots could provide, deduct the excess
-            // from realized P&L valued at the last consumed lot's buy price.
-            if sellQty > epsilon && lastConsumedLotPrice > 0 && feeInBaseAsset > epsilon {
-                realizedPnL -= sellQty * lastConsumedLotPrice
+            // Base-asset commission: fee quantity was never in any lot (it was
+            // deducted when the lot was created), so value it at market price.
+            if feeInBaseAsset > epsilon {
+                realizedPnL -= feeInBaseAsset * trade.price
             }
 
             if trade.commissionAsset == "USDT" {
@@ -216,7 +212,7 @@ private func fifoComputeBreakdowns(
             breakdowns.append(nil)
         } else {
             let feeInBaseAsset = trade.commissionAsset == trade.asset ? trade.commission : 0
-            var sellQty = trade.quantity + feeInBaseAsset
+            var sellQty = trade.quantity
             var remainingSaleQuantity = trade.quantity
 
             var saleRealizedPnL: Double = 0
@@ -225,35 +221,28 @@ private func fifoComputeBreakdowns(
 
             while sellQty > 0 && !lots.isEmpty {
                 let consumed = min(lots[0].remainingQuantity, sellQty)
-                let soldPortion = min(consumed, remainingSaleQuantity)
-                let feePortion = consumed - soldPortion
+                let soldPortion = consumed
 
                 saleRealizedPnL += soldPortion * (trade.price - lots[0].price)
-                saleRealizedPnL -= feePortion * lots[0].price
-
                 soldQuantity += soldPortion
                 costBasisAmount += soldPortion * lots[0].price
 
                 lots[0].remainingQuantity -= consumed
                 sellQty -= consumed
-                remainingSaleQuantity -= soldPortion
 
                 if lots[0].remainingQuantity <= epsilon {
                     lots.removeFirst()
                 }
             }
 
-            if trade.commissionAsset == "USDT" {
-                saleRealizedPnL -= trade.commission
+            // Base-asset commission: fee quantity was never in any lot (it was
+            // deducted when the lot was created), so value it at market price.
+            if feeInBaseAsset > epsilon {
+                saleRealizedPnL -= feeInBaseAsset * trade.price
             }
 
-            // If base-asset commission exceeds what lots could provide, deduct the excess
-            // from realized P&L valued at the last consumed lot's price.
-            if sellQty > epsilon && feeInBaseAsset > epsilon {
-                let lastLotPrice = costBasisAmount > epsilon && soldQuantity > epsilon
-                    ? costBasisAmount / soldQuantity
-                    : trade.price
-                saleRealizedPnL -= sellQty * lastLotPrice
+            if trade.commissionAsset == "USDT" {
+                saleRealizedPnL -= trade.commission
             }
 
             let borrowingFee: Double

@@ -291,7 +291,7 @@ struct SettingsView: View {
             }
             .tint(Theme.accent)
 
-            Text("Insights are generated on your device using Apple Intelligence and never leave your iPhone.")
+            Text("Insights are generated on your device using on-device AI and never leave your iPhone.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
