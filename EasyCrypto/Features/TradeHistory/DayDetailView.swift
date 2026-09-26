@@ -113,6 +113,9 @@ private struct TransactionBreakdownCard: View {
                 metricRow(label: "Buying price", value: detail.price.usdtFormatted)
                 metricRow(label: "Quantity", value: detail.quantity.quantityFormatted)
                 metricRow(label: "Total invested", value: detail.total.usdtFormatted)
+                if let commission = detail.commission, commission > 0 {
+                    metricRow(label: "Fee", value: commission.usdtFormatted, tint: Theme.loss.opacity(0.8))
+                }
             } else {
                 metricRow(label: "Selling price", value: detail.price.usdtFormatted)
                 if let costBasis = detail.costBasisPrice {
@@ -123,6 +126,9 @@ private struct TransactionBreakdownCard: View {
                     metricRow(label: "Total invested", value: invested.usdtFormatted)
                 }
                 metricRow(label: "Proceeds", value: detail.total.usdtFormatted)
+                if let commission = detail.commission, commission > 0 {
+                    metricRow(label: "Fee", value: commission.usdtFormatted, tint: Theme.loss.opacity(0.8))
+                }
 
                 if let pnl = detail.realizedPnL {
                     Divider().opacity(0.2)
@@ -131,6 +137,16 @@ private struct TransactionBreakdownCard: View {
                             .font(.subheadline.weight(.medium))
                         Spacer()
                         PnLLabel(value: pnl, percentage: pnlPercent, font: .subheadline.bold())
+                    }
+                }
+
+                if let feeAdjPnL = detail.marginAdjustedPnL, feeAdjPnL != detail.realizedPnL {
+                    HStack {
+                        Text("After borrowing fee")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        PnLLabel(value: feeAdjPnL, showArrow: true, font: .caption.bold())
                     }
                 }
             }
@@ -143,7 +159,7 @@ private struct TransactionBreakdownCard: View {
         return (pnl / invested) * 100
     }
 
-    private func metricRow(label: String, value: String) -> some View {
+    private func metricRow(label: String, value: String, tint: Color? = nil) -> some View {
         HStack {
             Text(label)
                 .font(.subheadline)
@@ -151,6 +167,7 @@ private struct TransactionBreakdownCard: View {
             Spacer()
             Text(value)
                 .font(.subheadline)
+                .foregroundStyle(tint ?? .primary)
         }
     }
 }
@@ -167,14 +184,16 @@ private struct TransactionBreakdownCard: View {
                     timestamp: Date(), isBuyer: false, tradingMode: .crossMargin,
                     price: 67000, quantity: 0.2, total: 13400,
                     costBasisPrice: 48750, invested: 9750, realizedPnL: 3650,
-                    borrowingFee: 19.50, marginAdjustedPnL: 3630.50
+                    borrowingFee: 19.50, marginAdjustedPnL: 3630.50,
+                    commission: 13.40
                 ),
                 DayTradeDetail(
                     id: "ETHUSDT-4", asset: "ETH", symbol: "ETHUSDT",
                     timestamp: Date(), isBuyer: true, tradingMode: .crossMargin,
                     price: 3200, quantity: 5.0, total: 16000,
                     costBasisPrice: nil, invested: 16000, realizedPnL: nil,
-                    borrowingFee: nil, marginAdjustedPnL: nil
+                    borrowingFee: nil, marginAdjustedPnL: nil,
+                    commission: 1.60
                 )
             ]
         )
@@ -192,7 +211,8 @@ private struct TransactionBreakdownCard: View {
                     timestamp: Date(), isBuyer: false, tradingMode: .isolatedMargin,
                     price: 95, quantity: 30, total: 2850,
                     costBasisPrice: 120, invested: 3600, realizedPnL: -750,
-                    borrowingFee: 12.00, marginAdjustedPnL: -762
+                    borrowingFee: 12.00, marginAdjustedPnL: -762,
+                    commission: 2.85
                 )
             ]
         )

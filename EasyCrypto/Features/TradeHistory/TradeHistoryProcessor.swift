@@ -173,6 +173,7 @@ class TradeHistoryProcessor: Processor {
         let dayStr = ISO8601DateFormatter().string(from: day)
 
         if first.isBuyer {
+            let totalCommission = ordered.reduce(0.0) { $0 + $1.0.commission }
             return DayTradeDetail(
                 id: "\(first.symbol)-\(first.tradingMode)-order-\(first.orderId)-buy-\(dayStr)",
                 asset: first.asset,
@@ -187,13 +188,15 @@ class TradeHistoryProcessor: Processor {
                 invested: totalQuote,
                 realizedPnL: nil,
                 borrowingFee: nil,
-                marginAdjustedPnL: nil
+                marginAdjustedPnL: nil,
+                commission: totalCommission
             )
         }
 
         let costBasisAmount = ordered.reduce(0.0) { $0 + ($1.1?.costBasisAmount ?? 0) }
         let realizedPnL = ordered.reduce(0.0) { $0 + ($1.1?.realizedPnL ?? 0) }
         let borrowingFee = ordered.reduce(0.0) { $0 + ($1.1?.borrowingFee ?? 0) }
+        let totalCommission = ordered.reduce(0.0) { $0 + $1.0.commission }
         let marginAdjustedPnL = borrowingFee != 0 ? realizedPnL - borrowingFee : nil
         let costBasisPrice = totalQuantity > 0 ? costBasisAmount / totalQuantity : nil
         return DayTradeDetail(
@@ -210,7 +213,8 @@ class TradeHistoryProcessor: Processor {
             invested: costBasisAmount,
             realizedPnL: realizedPnL,
             borrowingFee: borrowingFee,
-            marginAdjustedPnL: marginAdjustedPnL
+            marginAdjustedPnL: marginAdjustedPnL,
+            commission: totalCommission
         )
     }
 

@@ -19,6 +19,7 @@ struct HoldingsListView: View {
                 tradingModePicker
                 profitSummary
                 holdingsList
+                lastRefreshFooter
             }
             .padding(.horizontal)
             .padding(.bottom, 20)
@@ -30,10 +31,12 @@ struct HoldingsListView: View {
             }
         }
         .onAppear {
-            // Show cached data immediately; the refresh button triggers a full sync.
             if !state.isLoading {
                 processor.send(.loadPersisted)
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            refreshIfStale()
         }
     }
 
@@ -146,6 +149,11 @@ struct HoldingsListView: View {
                         )
                     }
                 }
+                .overlay {
+                    if state.isLoading {
+                        loadingOverlay
+                    }
+                }
                 .animation(.spring(duration: 0.35), value: state.holdings.map(\.asset))
             }
         }
@@ -154,16 +162,59 @@ struct HoldingsListView: View {
     // MARK: - Empty State
 
     private var emptyView: some View {
-        ContentUnavailableView {
-            Label("No Holdings", systemImage: "chart.pie")
+        let modeLabel = state.selectedTradingMode.displayName
+        return ContentUnavailableView {
+            Label("No \(modeLabel) Holdings", systemImage: "chart.pie")
         } description: {
-            Text("Pull down to refresh and sync your trades from Binance.")
+            Text("Tap the refresh button to sync your trades from Binance.")
         } actions: {
             Button("Refresh Now") {
                 processor.send(.loadHoldings)
             }
             .buttonStyle(.borderedProminent)
             .tint(Theme.accent)
+        }
+    }
+
+    // MARK: - Loading Overlay
+
+    private var loadingOverlay: some View {
+        VStack {
+            Spacer()
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Syncing…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.ultraThinMaterial, in: Capsule())
+            .padding(.bottom, 20)
+        }
+    }
+
+    // MARK: - Last Refresh Footer
+
+    @ViewBuilder
+    private var lastRefreshFooter: some View {
+        if let date = state.lastRefreshDate {
+            let absoluteTime = date.formatted(date: .omitted, time: .standard)
+            Text("Updated \(date.formatted(.relative(presentation: .named))) (\(absoluteTime))")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 4)
+        }
+    }
+
+    // MARK: - Stale Data Refresh
+
+    private func refreshIfStale() {
+        if let lastRefresh = state.lastRefreshDate,
+           Date().timeIntervalSince(lastRefresh) > 300 {
+            processor.send(.loadPersisted)
         }
     }
 

@@ -80,7 +80,7 @@ struct InsightsView: View {
 
     private var headerCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("AI Insights", systemImage: "brain.head.profile")
+            Label("AI Insights", systemImage: "sparkles")
                 .font(.headline)
 
             Text("Private, on-device analysis of your trading patterns.")

@@ -14,6 +14,8 @@ struct SettingsView: View {
 
     private var state: SettingsState { processor.state }
 
+    @State private var showRemoveKeyAlert = false
+
     var body: some View {
         ScrollView {
             VStack(spacing: Theme.sectionSpacing) {
@@ -47,6 +49,14 @@ struct SettingsView: View {
         } message: {
             Text("This will delete all trades, sync data, and API keys. This action cannot be undone.")
         }
+        .alert("Remove API Key?", isPresented: $showRemoveKeyAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Remove", role: .destructive) {
+                processor.send(.deleteApiKey)
+            }
+        } message: {
+            Text("This removes the key from Keychain. You will need to re-enter it to sync again.")
+        }
     }
 
     // MARK: - API Key Section
@@ -64,7 +74,7 @@ struct SettingsView: View {
                         .font(.subheadline)
                     Spacer()
                     Button("Remove") {
-                        processor.send(.deleteApiKey)
+                        showRemoveKeyAlert = true
                     }
                     .font(.subheadline)
                     .foregroundStyle(Theme.loss)
@@ -269,7 +279,7 @@ struct SettingsView: View {
 
     private var insightsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("AI Insights", systemImage: "brain.head.profile")
+            Label("AI Insights", systemImage: "sparkles")
                 .font(.headline)
 
             Toggle(isOn: Binding(
