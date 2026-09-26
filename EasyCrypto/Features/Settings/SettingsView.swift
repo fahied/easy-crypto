@@ -81,8 +81,6 @@ struct SettingsView: View {
 
                     Button {
                         processor.send(.saveApiKey(apiKey: apiKeyInput, secret: secretInput))
-                        apiKeyInput = ""
-                        secretInput = ""
                     } label: {
                         Text("Save Credentials")
                             .frame(maxWidth: .infinity)
@@ -90,6 +88,36 @@ struct SettingsView: View {
                     .buttonStyle(.borderedProminent)
                     .tint(Theme.accent)
                     .disabled(apiKeyInput.isEmpty || secretInput.isEmpty)
+
+                    // Inline API key creation guidance
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("How to create an API key:")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Text("1. Go to binance.com → API Management")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text("2. Create API key with Spot/Margin reading permissions")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text("3. Copy the key and secret below")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Link("Open Binance API Docs →", destination: URL(string: "https://www.binance.com/en/support/faq/how-to-create-api-keys-on-binance-360002502072")!)
+                            .font(.caption2)
+                            .tint(Theme.accent)
+                    }
+                    .padding(.top, 4)
+
+                    // Keychain security indicator
+                    HStack(spacing: 6) {
+                        Image(systemName: "lock.fill")
+                            .font(.caption2)
+                            .foregroundStyle(Theme.profit)
+                        Text("Stored securely in iOS Keychain")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
