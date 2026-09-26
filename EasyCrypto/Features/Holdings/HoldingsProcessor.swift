@@ -63,6 +63,7 @@ class HoldingsProcessor: Processor {
                 holdings = data.holdings
             }
             state.holdings = holdings.sorted { $0.currentValueUSDT > $1.currentValueUSDT }
+            state.lastRefreshDate = Date()
         } catch {
             state.error = error.localizedDescription
         }

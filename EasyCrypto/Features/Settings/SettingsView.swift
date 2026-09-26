@@ -158,6 +158,27 @@ struct SettingsView: View {
         return false
     }
 
+    private var marginRiskMessage: String {
+        switch state.selectedTradingMode {
+        case .crossMargin:
+            return "Cross Margin allows you to borrow funds to trade larger positions. " +
+            "This comes with significant risks:\n\n" +
+            "• Amplified losses: losses can exceed your initial deposit\n" +
+            "• Liquidation risk: positions can be force-closed if margin requirements are not met\n" +
+            "• Borrowing fees: interest accrues daily on borrowed funds\n" +
+            "• Margin calls: Binance can require you to add funds or close positions"
+        case .isolatedMargin:
+            return "Isolated Margin limits borrowing to a single trading pair. " +
+            "Risks include:\n\n" +
+            "• Amplified losses limited to the isolated margin for that pair\n" +
+            "• Liquidation risk within the isolated margin\n" +
+            "• Borrowing fees: interest accrues daily\n" +
+            "• Auto-repay: losses can auto-repay from your isolated margin"
+        default:
+            return ""
+        }
+    }
+
     @ViewBuilder
     private var connectionStatusView: some View {
         switch state.connectionStatus {
@@ -201,7 +222,6 @@ struct SettingsView: View {
                 get: { state.selectedTradingMode },
                 set: { [weak processor] newMode in
                     guard let processor else { return }
-                    processor.state.selectedTradingMode = newMode
                     Task { await processor.handle(.setTradingMode(newMode)) }
                 }
             )) {
@@ -211,10 +231,11 @@ struct SettingsView: View {
             }
             .pickerStyle(.segmented)
 
-            if state.selectedTradingMode != .spot {
-                Text("Margin trading requires margin to be enabled on your Binance account.")
+            if state.selectedTradingMode != .spot, !marginRiskMessage.isEmpty {
+                Text(marginRiskMessage)
                     .font(.caption)
                     .foregroundStyle(.orange)
+                    .padding(.top, 4)
             }
         }
         .glassCard()

@@ -312,7 +312,7 @@ class PortfolioProcessor: Processor {
             let quantity = balance?.netAsset ?? marginResult.totalRemainingQuantity
             let currentPrice = price(of: asset, in: prices)
             let currentValueUSDT = quantity * currentPrice
-            let marginAdjustedPnL: Double? = marginResult.marginAdjustedRealizedPnL > 0 || marginResult.totalBorrowingFees > 0
+            let marginAdjustedPnL: Double? = marginResult.marginAdjustedRealizedPnL != 0 || marginResult.totalBorrowingFees != 0
                 ? marginResult.marginAdjustedRealizedPnL
                 : nil
 
@@ -361,7 +361,7 @@ class PortfolioProcessor: Processor {
             let quantity = netAssetByAsset[asset] ?? marginResult.totalRemainingQuantity
             let currentPrice = price(of: asset, in: prices)
             let currentValueUSDT = quantity * currentPrice
-            let marginAdjustedPnL: Double? = marginResult.marginAdjustedRealizedPnL > 0 || marginResult.totalBorrowingFees > 0
+            let marginAdjustedPnL: Double? = marginResult.marginAdjustedRealizedPnL != 0 || marginResult.totalBorrowingFees != 0
                 ? marginResult.marginAdjustedRealizedPnL
                 : nil
 

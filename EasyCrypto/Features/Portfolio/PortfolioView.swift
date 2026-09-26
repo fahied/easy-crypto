@@ -106,9 +106,9 @@ struct PortfolioView: View {
 
     private var summaryGrid: some View {
         let summary = processor.aggregateSummary
-        let pnlColor = summary.totalUnrealizedPnL >= 0 ? Theme.profit : Theme.loss
-        let realizedColor = summary.totalRealizedPnL >= 0 ? Theme.profit : Theme.loss
-        let totalPnLColor = summary.totalPnL >= 0 ? Theme.profit : Theme.loss
+        let pnlColor = summary.totalUnrealizedPnL > 0 ? Theme.profit : (summary.totalUnrealizedPnL < 0 ? Theme.loss : Theme.neutral)
+        let realizedColor = summary.totalRealizedPnL > 0 ? Theme.profit : (summary.totalRealizedPnL < 0 ? Theme.loss : Theme.neutral)
+        let totalPnLColor = summary.totalPnL > 0 ? Theme.profit : (summary.totalPnL < 0 ? Theme.loss : Theme.neutral)
 
         return LazyVGrid(
             columns: [GridItem(.flexible(), spacing: Theme.cardSpacing),
@@ -166,7 +166,8 @@ struct PortfolioView: View {
     @ViewBuilder
     private var lastRefreshFooter: some View {
         if let date = state.lastRefreshDate {
-            Text("Updated \(date.formatted(.relative(presentation: .named)))")
+            let absoluteTime = date.formatted(date: .omitted, time: .standard)
+            Text("Updated \(date.formatted(.relative(presentation: .named))) (\(absoluteTime))")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .frame(maxWidth: .infinity)

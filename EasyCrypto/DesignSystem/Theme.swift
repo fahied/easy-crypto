@@ -33,12 +33,14 @@ extension Double {
     }
 
     var signedUsdtFormatted: String {
-        let prefix = self >= 0 ? "+" : ""
+        if self == 0 { return usdtFormatted }
+        let prefix = self > 0 ? "+" : "-"
         return "\(prefix)\(usdtFormatted)"
     }
 
     var percentFormatted: String {
-        let prefix = self >= 0 ? "+" : ""
+        if self == 0 { return "0%" }
+        let prefix = self > 0 ? "+" : "-"
         return "\(prefix)\(formatted(.number.precision(.fractionLength(2))))%"
     }
 

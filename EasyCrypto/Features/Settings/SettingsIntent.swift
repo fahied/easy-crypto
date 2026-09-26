@@ -28,6 +28,4 @@ enum SettingsIntent: Intent {
     case setInsightsEnabled(Bool)
     case loadTradingMode
     case setTradingMode(TradingMode)
-    case confirmMarginMode
-    case cancelMarginMode
 }
