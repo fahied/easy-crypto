@@ -119,7 +119,7 @@ nonisolated func fifoCompute(_ trades: [FIFOTrade]) -> FIFOResult {
                     // Base-asset commission: quantity is reduced, lot price is inflated
                     lotPrice = trade.price * trade.quantity / qty
                     usdtSpent = trade.price * trade.quantity
-                } else if trade.commissionAsset == "USDT" || trade.commission > 0 {
+                } else if trade.commissionAsset == "USDT" {
                     // Quote-asset commission: full quantity received, but total USD
                     // spent includes the commission cost.
                     lotPrice = (trade.price * trade.quantity + trade.commission) / qty
@@ -137,11 +137,13 @@ nonisolated func fifoCompute(_ trades: [FIFOTrade]) -> FIFOResult {
             let feeInBaseAsset = trade.commissionAsset == trade.asset ? trade.commission : 0
             var remainingSaleQuantity = trade.quantity
             sellQty += feeInBaseAsset
+            var lastConsumedLotPrice: Double = 0
 
             while sellQty > 0 && !lots.isEmpty {
                 let consumed = min(lots[0].remainingQuantity, sellQty)
                 let soldPortion = min(consumed, remainingSaleQuantity)
                 let feePortion = consumed - soldPortion
+                lastConsumedLotPrice = lots[0].price
 
                 realizedPnL += soldPortion * (trade.price - lots[0].price)
                 realizedPnL -= feePortion * lots[0].price
@@ -153,6 +155,12 @@ nonisolated func fifoCompute(_ trades: [FIFOTrade]) -> FIFOResult {
                 if lots[0].remainingQuantity <= epsilon {
                     lots.removeFirst()
                 }
+            }
+
+            // If base-asset commission exceeds what lots could provide, deduct the excess
+            // from realized P&L valued at the last consumed lot's buy price.
+            if sellQty > epsilon && lastConsumedLotPrice > 0 && feeInBaseAsset > epsilon {
+                realizedPnL -= sellQty * lastConsumedLotPrice
             }
 
             if trade.commissionAsset == "USDT" {
@@ -198,7 +206,7 @@ private func fifoComputeBreakdowns(
                 let lotPrice: Double
                 if trade.commissionAsset == trade.asset {
                     lotPrice = trade.price * trade.quantity / qty
-                } else if trade.commissionAsset == "USDT" || trade.commission > 0 {
+                } else if trade.commissionAsset == "USDT" {
                     lotPrice = (trade.price * trade.quantity + trade.commission) / qty
                 } else {
                     lotPrice = trade.price
@@ -237,6 +245,15 @@ private func fifoComputeBreakdowns(
 
             if trade.commissionAsset == "USDT" {
                 saleRealizedPnL -= trade.commission
+            }
+
+            // If base-asset commission exceeds what lots could provide, deduct the excess
+            // from realized P&L valued at the last consumed lot's price.
+            if sellQty > epsilon && feeInBaseAsset > epsilon {
+                let lastLotPrice = costBasisAmount > epsilon && soldQuantity > epsilon
+                    ? costBasisAmount / soldQuantity
+                    : trade.price
+                saleRealizedPnL -= sellQty * lastLotPrice
             }
 
             let borrowingFee: Double

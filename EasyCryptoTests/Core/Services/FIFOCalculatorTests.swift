@@ -146,12 +146,12 @@ struct FIFOBaseAssetCommissionTests {
         #expect(abs(result.totalInvestedUSDT - result.weightedAvgBuyPrice * result.totalRemainingQuantity) < 0.01)
     }
 
-    @Test("When buy commission is in USDT, then weighted avg price is unchanged")
-    func buyUSDTCommissionDoesNotAffectAvg() {
+    @Test("When buy commission is in USDT, then weighted avg price includes commission")
+    func buyUSDTCommissionAffectsAvg() {
         // Buy 1.0 BTC at 50000 USDT, pay 50 USDT commission.
         // Total spent: 1.0 * 50000 + 50 = 50050 USDT.
         // Net received: 1.0 BTC (no base-asset reduction).
-        // Effective price: 50000 (base price, quote commission doesn't affect lot price).
+        // Effective price: (50000 + 50) / 1.0 = 50050.
         let trades = [
             makeTrade(
                 price: 50000, quantity: 1.0, isBuyer: true,
@@ -161,8 +161,8 @@ struct FIFOBaseAssetCommissionTests {
         let result = calculator.calculate(trades)
 
         #expect(result.remainingLots[0].remainingQuantity == 1.0)
-        #expect(result.weightedAvgBuyPrice == 50000)
-        #expect(result.totalInvestedUSDT == 50000)
+        #expect(result.weightedAvgBuyPrice == 50050)
+        #expect(result.totalInvestedUSDT == 50050)
     }
 
     @Test("When buy has no commission, then weighted avg price equals trade price")
@@ -176,7 +176,7 @@ struct FIFOBaseAssetCommissionTests {
         #expect(result.totalInvestedUSDT == 50000)
     }
 
-    @Test("When buy with base-asset commission is followed by sell, then P&L reflects the inflated cost basis")
+    @Test("When buy with base-asset commission is followed by sell, then P&L reflects all costs")
     func buyCommissionThenSellCorrectlyValuesFees() {
         // Buy 1.0 BTC @ 50000, commission 0.001 BTC.
         //   Effective price = 50000 * 1.0 / 0.999 ≈ 50050.05
@@ -184,11 +184,12 @@ struct FIFOBaseAssetCommissionTests {
         // Sell 0.999 BTC @ 55000, commission 0.0005 BTC (in base asset).
         //   sellQty = 0.999 + 0.0005 = 0.9995
         //   consumed = min(0.999, 0.9995) = 0.999
-        //   soldPortion = min(0.999, 0.999) = 0.999  (quantity actually sold)
-        //   feePortion = 0.999 - 0.999 = 0           (commission didn't consume extra lot)
-        //   realized = 0.999 * (55000 - 50050.05) = 4945.45
-        // Note: the 0.0005 BTC sell commission costs 0.0005 * 55000 = 27.50 USDT
-        // but is NOT deducted from realizedPnL (feePortion is 0).
+        //   soldPortion = min(0.999, 0.999) = 0.999
+        //   feePortion = 0.999 - 0.999 = 0
+        //   P&L from sale = 0.999 * (55000 - 50050.05) = 4945.45
+        //   Excess commission = 0.9995 - 0.999 = 0.0005 BTC
+        //   Commission cost = 0.0005 * 50050.05 = 25.025
+        //   Net P&L = 4945.45 - 25.025 = 4920.425
         let trades = [
             makeTrade(
                 price: 50000, quantity: 1.0, isBuyer: true,
@@ -204,7 +205,8 @@ struct FIFOBaseAssetCommissionTests {
         #expect(result.remainingLots.isEmpty)
         let effectivePrice = 50000.0 * 1.0 / 0.999
         let soldPortion = 0.999
-        let expectedPnL = soldPortion * (55000 - effectivePrice)
+        let commissionExcess = 0.0005
+        let expectedPnL = soldPortion * (55000 - effectivePrice) - commissionExcess * effectivePrice
         #expect(abs(result.realizedPnL - expectedPnL) < 0.01)
     }
 
