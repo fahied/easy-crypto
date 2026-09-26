@@ -30,12 +30,39 @@ struct MarginHoldingRow: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
-            header
-            Divider().overlay(Color.white.opacity(0.08))
-            statsStrip
+        HStack(spacing: 0) {
+            modeIndicator
+            VStack(spacing: 8) {
+                header
+                Divider().overlay(Color.white.opacity(0.08))
+                statsStrip
+            }
+            .padding(12)
         }
-        .glassCard(cornerRadius: Theme.smallRadius + 4, padding: 12)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.smallRadius + 4)
+                .fill(.ultraThinMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.smallRadius + 4)
+                .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+        )
+    }
+
+    // MARK: - Mode Indicator
+
+    private var modeIndicator: some View {
+        let color: Color = {
+            switch tradingMode {
+            case .crossMargin: return Theme.marginCross
+            case .isolatedMargin: return Theme.marginIsolated
+            default: return Theme.spotTint
+            }
+        }()
+        return Rectangle()
+            .fill(color)
+            .frame(width: 4)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.smallRadius + 4))
     }
 
     // MARK: - Header
