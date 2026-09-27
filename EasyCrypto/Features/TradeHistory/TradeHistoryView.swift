@@ -103,7 +103,7 @@ struct TradeHistoryView: View {
                 toGranularity: .month
             )
         }
-        let total = entries.reduce(0) { $0 + $1.realizedPnL }
+        let total = entries.reduce(0) { $0 + $1.netPnL }
         let sellCount = entries.reduce(0) { $0 + $1.sellCount }
 
         return HStack(alignment: .center) {

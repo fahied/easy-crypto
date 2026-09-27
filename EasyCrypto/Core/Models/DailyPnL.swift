@@ -9,8 +9,12 @@ import Foundation
 nonisolated struct DailyPnL: Equatable, Sendable {
     /// Start of the day this entry represents.
     let date: Date
-    /// Net realized P&L from all sells that settled on this day.
+    /// Net realized P&L from all sells that settled on this day (before borrowing fee deduction).
     let realizedPnL: Double
+    /// Borrowing fees deducted for the day (margin trades only).
+    let borrowingFeeUSDT: Double
+    /// Net realized P&L after borrowing fee deduction.
+    var netPnL: Double { realizedPnL - borrowingFeeUSDT }
     /// Number of sell trades on this day.
     let sellCount: Int
     /// Total number of trades (buys + sells) on this day.

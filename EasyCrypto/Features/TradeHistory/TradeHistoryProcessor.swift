@@ -238,9 +238,12 @@ class TradeHistoryProcessor: Processor {
         let grouped = Dictionary(grouping: details) { calendar.startOfDay(for: $0.timestamp) }
         return grouped.mapValues { dayTrades in
             let sells = dayTrades.filter { !$0.isBuyer }
+            let realized = sells.compactMap { $0.marginAdjustedPnL ?? $0.realizedPnL }.reduce(0, +)
+            let borrowingFee = sells.compactMap(\.borrowingFee).reduce(0, +)
             return DailyPnL(
                 date: calendar.startOfDay(for: dayTrades[0].timestamp),
-                realizedPnL: sells.compactMap(\.realizedPnL).reduce(0, +),
+                realizedPnL: realized,
+                borrowingFeeUSDT: borrowingFee,
                 sellCount: sells.count,
                 tradeCount: dayTrades.count
             )
