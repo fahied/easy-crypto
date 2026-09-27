@@ -278,7 +278,8 @@ class PortfolioProcessor: Processor {
                 asset: asset,
                 quantity: quantity,
                 currentPrice: currentPrice,
-                fifo: fifoResult
+                fifo: fifoResult,
+                borrowingFeeUSDT: 0
             )
         }
     }
@@ -325,7 +326,8 @@ class PortfolioProcessor: Processor {
                     tradingMode: .crossMargin,
                     borrowedQuantity: balance?.borrowed,
                     marginAdjustedPnL: marginAdjustedPnL,
-                    liquidationPrice: nil
+                    liquidationPrice: nil,
+                    borrowingFeeUSDT: marginResult.totalBorrowingFees
                 ))
             }
         }
@@ -373,7 +375,8 @@ class PortfolioProcessor: Processor {
                     fifo: fifoResult,
                     tradingMode: .isolatedMargin,
                     borrowedQuantity: borrowedByAsset[asset],
-                    marginAdjustedPnL: marginAdjustedPnL
+                    marginAdjustedPnL: marginAdjustedPnL,
+                    borrowingFeeUSDT: marginResult.totalBorrowingFees
                 ))
             }
         }

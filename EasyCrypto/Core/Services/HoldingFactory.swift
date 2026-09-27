@@ -19,7 +19,8 @@ nonisolated enum HoldingFactory {
         tradingMode: TradingMode = .spot,
         borrowedQuantity: Double? = nil,
         marginAdjustedPnL: Double? = nil,
-        liquidationPrice: Double? = nil
+        liquidationPrice: Double? = nil,
+        borrowingFeeUSDT: Double = 0
     ) -> Holding {
         let invested = fifo.totalInvestedUSDT
         let fifoQuantity = fifo.totalRemainingQuantity
@@ -41,7 +42,8 @@ nonisolated enum HoldingFactory {
             tradingMode: tradingMode,
             borrowedQuantity: borrowedQuantity,
             marginAdjustedPnL: marginAdjustedPnL,
-            liquidationPrice: liquidationPrice
+            liquidationPrice: liquidationPrice,
+            borrowingFeeUSDT: borrowingFeeUSDT
         )
     }
 }

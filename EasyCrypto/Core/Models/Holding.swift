@@ -33,6 +33,9 @@ nonisolated struct Holding: Equatable, Sendable, Identifiable, Hashable {
     /// Estimated liquidation price — populated for isolated-margin (nil for spot/cross).
     let liquidationPrice: Double?
 
+    /// Cumulative borrowing fees paid on this position (margin only, 0 for spot).
+    let borrowingFeeUSDT: Double
+
     init(
         asset: String,
         totalQuantity: Double,
@@ -48,7 +51,8 @@ nonisolated struct Holding: Equatable, Sendable, Identifiable, Hashable {
         lockedBalance: Double? = nil,
         borrowedQuantity: Double? = nil,
         marginAdjustedPnL: Double? = nil,
-        liquidationPrice: Double? = nil
+        liquidationPrice: Double? = nil,
+        borrowingFeeUSDT: Double = 0
     ) {
         self.asset = asset
         self.totalQuantity = totalQuantity
@@ -65,5 +69,6 @@ nonisolated struct Holding: Equatable, Sendable, Identifiable, Hashable {
         self.borrowedQuantity = borrowedQuantity
         self.marginAdjustedPnL = marginAdjustedPnL
         self.liquidationPrice = liquidationPrice
+        self.borrowingFeeUSDT = borrowingFeeUSDT
     }
 }

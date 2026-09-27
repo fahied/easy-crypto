@@ -26,6 +26,8 @@ class TradeHistoryProcessor: Processor {
             await loadHistory()
         case .filterByCoin(let coin):
             await filterByCoin(coin)
+        case .filterByMode(let mode):
+            await filterByMode(mode)
         case .nextMonth:
             shiftMonth(by: 1)
         case .previousMonth:
@@ -48,7 +50,7 @@ class TradeHistoryProcessor: Processor {
         do {
             let allTrades = try fetchAllTrades()
             state.availableCoins = discoverCoins(from: allTrades)
-            rebuild(from: allTrades, coin: state.selectedCoin)
+            rebuild(from: allTrades, coin: state.selectedCoin, mode: state.selectedTradingMode)
 
             // Default the calendar to the month of the most recent trade.
             if let latest = allTrades.last {
@@ -67,7 +69,19 @@ class TradeHistoryProcessor: Processor {
 
         do {
             let allTrades = try fetchAllTrades()
-            rebuild(from: allTrades, coin: coin)
+            rebuild(from: allTrades, coin: coin, mode: state.selectedTradingMode)
+        } catch {
+            state.error = error.localizedDescription
+        }
+    }
+
+    private func filterByMode(_ mode: TradingMode) async {
+        state.selectedTradingMode = mode
+        state.error = nil
+
+        do {
+            let allTrades = try fetchAllTrades()
+            rebuild(from: allTrades, coin: state.selectedCoin, mode: mode)
         } catch {
             state.error = error.localizedDescription
         }
@@ -84,12 +98,13 @@ class TradeHistoryProcessor: Processor {
 
     // MARK: - Building
 
-    /// Recomputes `trades`, `details`, and `dailyPnL` for the given coin filter.
-    private func rebuild(from allTrades: [Trade], coin: String?) {
-        let filtered = coin == nil ? allTrades : allTrades.filter { $0.asset == coin }
+    /// Recomputes `trades`, `details`, and `dailyPnL` for the active coin and mode filters.
+    private func rebuild(from allTrades: [Trade], coin: String?, mode: TradingMode) {
+        let byMode = allTrades.filter { $0.tradingModeEnum == mode }
+        let filtered = coin == nil ? byMode : byMode.filter { $0.asset == coin }
         state.trades = filtered.sorted { $0.timestamp > $1.timestamp }
 
-        let details = buildDetails(from: allTrades, coin: coin)
+        let details = buildDetails(from: allTrades, coin: coin, mode: mode)
         state.details = details
         state.dailyPnL = buildDailyPnL(from: details)
     }
@@ -98,13 +113,14 @@ class TradeHistoryProcessor: Processor {
     /// in chronological order (lots never cross modes), then aggregates fills belonging to
     /// the same order (one user order can fill across multiple trades sharing an `orderId`)
     /// into a single transaction. Results from every mode are merged into one list.
-    private func buildDetails(from allTrades: [Trade], coin: String?) -> [DayTradeDetail] {
+    private func buildDetails(from allTrades: [Trade], coin: String?, mode: TradingMode) -> [DayTradeDetail] {
         let byAssetAndMode = Dictionary(grouping: allTrades) {
             AssetModeKey(asset: $0.asset, mode: $0.tradingModeEnum)
         }
         var details: [DayTradeDetail] = []
 
         for (key, trades) in byAssetAndMode {
+            if key.mode != mode { continue }
             if let coin, coin != key.asset { continue }
 
             let useMargin = key.mode != .spot

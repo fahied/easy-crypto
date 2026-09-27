@@ -132,6 +132,9 @@ struct MarginHoldingRow: View {
                 if let liqPrice = liquidationPrice, !liqPrice.isEmpty {
                     stat(label: "Liq. Price", value: "$\(liqPrice)", tint: Theme.loss)
                 }
+                if holding.borrowingFeeUSDT > 1e-6 {
+                    stat(label: "Borrowing Fee", value: holding.borrowingFeeUSDT.signedUsdtFormatted, tint: Theme.loss)
+                }
             }
         }
     }
@@ -155,13 +158,17 @@ struct MarginHoldingRow: View {
 
 // MARK: - Previews
 
-#Preview("Cross Margin") {
+#Preview("Cross Margin with Borrowing Fee") {
     MarginHoldingRow(
         holding: Holding(
             asset: "BTC", totalQuantity: 0.5, weightedAvgBuyPrice: 50000,
             totalInvestedUSDT: 25000, currentPrice: 55000,
             currentValueUSDT: 27500, unrealizedPnL: 2500,
-            unrealizedPnLPercent: 10, realizedPnL: 0
+            unrealizedPnLPercent: 10, realizedPnL: 1000,
+            tradingMode: .crossMargin,
+            borrowedQuantity: 0.3,
+            liquidationPrice: nil,
+            borrowingFeeUSDT: 42.50
         ),
         tradingMode: .crossMargin,
         borrowedQuantity: 0.3,
