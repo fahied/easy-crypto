@@ -169,13 +169,7 @@ struct HoldingsListView: View {
         return ContentUnavailableView {
             Label("No \(modeLabel) Holdings", systemImage: "chart.pie")
         } description: {
-            Text("Tap the refresh button to sync your trades from Binance.")
-        } actions: {
-            Button("Refresh Now") {
-                processor.send(.loadHoldings)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(Theme.accent)
+            Text("Add your Binance API key in Settings to sync your trades and balances.")
         }
     }
 
