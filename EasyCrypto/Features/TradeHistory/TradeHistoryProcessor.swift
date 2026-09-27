@@ -6,6 +6,7 @@
 import Foundation
 import SwiftData
 import Observation
+import UIKit
 
 @Observable
 class TradeHistoryProcessor: Processor {
