@@ -6,6 +6,7 @@
 import Foundation
 import SwiftData
 import Observation
+import UIKit
 
 @Observable
 class PortfolioProcessor: Processor {
@@ -87,9 +88,13 @@ class PortfolioProcessor: Processor {
             state.lastRefreshDate = Date()
         } catch {
             state.error = error.localizedDescription
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
         }
 
         state.isLoading = false
+        if state.error == nil {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        }
     }
 
     // MARK: - Refresh
@@ -126,9 +131,13 @@ class PortfolioProcessor: Processor {
             state.lastRefreshDate = Date()
         } catch {
             state.error = error.localizedDescription
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
         }
 
         state.isLoading = false
+        if state.error == nil {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        }
     }
 
     // MARK: - Summary Computation

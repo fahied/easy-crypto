@@ -6,6 +6,7 @@
 import Foundation
 import SwiftData
 import Observation
+import UIKit
 
 @Observable
 class HoldingsProcessor: Processor {
@@ -66,9 +67,13 @@ class HoldingsProcessor: Processor {
             state.lastRefreshDate = Date()
         } catch {
             state.error = error.localizedDescription
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
         }
 
         state.isLoading = false
+        if state.error == nil {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        }
     }
 
     // MARK: - Trading Mode Filter
