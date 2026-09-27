@@ -165,13 +165,8 @@ struct PortfolioView: View {
 
     @ViewBuilder
     private var lastRefreshFooter: some View {
-        if let date = state.lastRefreshDate {
-            let absoluteTime = date.formatted(date: .omitted, time: .standard)
-            Text("Updated \(date.formatted(.relative(presentation: .named))) (\(absoluteTime))")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .frame(maxWidth: .infinity)
-                .padding(.top, 4)
+        if let date = processor.state.lastRefreshDate {
+            RelativeTimeView(timestamp: date)
         }
     }
 
