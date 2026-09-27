@@ -19,6 +19,7 @@ struct HoldingsListView: View {
                 tradingModePicker
                 profitSummary
                 holdingsList
+                lastRefreshFooter
             }
             .padding(.horizontal)
             .padding(.bottom, 20)
@@ -30,10 +31,12 @@ struct HoldingsListView: View {
             }
         }
         .onAppear {
-            // Show cached data immediately; the refresh button triggers a full sync.
             if !state.isLoading {
                 processor.send(.loadPersisted)
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            refreshIfStale()
         }
     }
 
@@ -137,6 +140,9 @@ struct HoldingsListView: View {
                 emptyView
             } else {
                 LazyVStack(spacing: Theme.cardSpacing) {
+                    if let error = state.error {
+                        staleDataBanner(error)
+                    }
                     ForEach(state.holdings) { holding in
                         MarginHoldingRow(
                             holding: holding,
@@ -144,6 +150,11 @@ struct HoldingsListView: View {
                             borrowedQuantity: holding.borrowedQuantity,
                             liquidationPrice: holding.liquidationPrice.map { String(format: "%.0f", $0) }
                         )
+                    }
+                }
+                .overlay {
+                    if state.isLoading {
+                        loadingOverlay
                     }
                 }
                 .animation(.spring(duration: 0.35), value: state.holdings.map(\.asset))
@@ -154,16 +165,48 @@ struct HoldingsListView: View {
     // MARK: - Empty State
 
     private var emptyView: some View {
-        ContentUnavailableView {
-            Label("No Holdings", systemImage: "chart.pie")
+        let modeLabel = state.selectedTradingMode.displayName
+        return ContentUnavailableView {
+            Label("No \(modeLabel) Holdings", systemImage: "chart.pie")
         } description: {
-            Text("Pull down to refresh and sync your trades from Binance.")
-        } actions: {
-            Button("Refresh Now") {
-                processor.send(.loadHoldings)
+            Text("Add your Binance API key in Settings to sync your trades and balances.")
+        }
+    }
+
+    // MARK: - Loading Overlay
+
+    private var loadingOverlay: some View {
+        VStack {
+            Spacer()
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Syncing…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(Theme.accent)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.ultraThinMaterial, in: Capsule())
+            .padding(.bottom, 20)
+        }
+    }
+
+    // MARK: - Last Refresh Footer
+
+    @ViewBuilder
+    private var lastRefreshFooter: some View {
+        if let date = state.lastRefreshDate {
+            RelativeTimeView(timestamp: date)
+        }
+    }
+
+    // MARK: - Stale Data Refresh
+
+    private func refreshIfStale() {
+        if let lastRefresh = state.lastRefreshDate,
+           Date().timeIntervalSince(lastRefresh) > 300 {
+            processor.send(.loadPersisted)
         }
     }
 
@@ -181,6 +224,24 @@ struct HoldingsListView: View {
     }
 
     // MARK: - Error State
+
+    private func staleDataBanner(_ message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption)
+            Text("Showing cached data: \(message)")
+                .font(.caption)
+            Spacer()
+            Button("Retry") {
+                processor.send(.loadHoldings)
+            }
+            .font(.caption.bold())
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.orange.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
 
     private func errorView(_ message: String) -> some View {
         ContentUnavailableView {

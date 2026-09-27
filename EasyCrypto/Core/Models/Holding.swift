@@ -19,6 +19,11 @@ nonisolated struct Holding: Equatable, Sendable, Identifiable, Hashable {
     let realizedPnL: Double
     let tradingMode: TradingMode
 
+    /// Available (free) balance for trading.
+    let availableBalance: Double
+    /// Locked (in-order) balance.
+    let lockedBalance: Double
+
     // MARK: - Margin Fields
 
     /// Quantity borrowed on margin (nil for spot).
@@ -27,6 +32,9 @@ nonisolated struct Holding: Equatable, Sendable, Identifiable, Hashable {
     let marginAdjustedPnL: Double?
     /// Estimated liquidation price — populated for isolated-margin (nil for spot/cross).
     let liquidationPrice: Double?
+
+    /// Cumulative borrowing fees paid on this position (margin only, 0 for spot).
+    let borrowingFeeUSDT: Double
 
     init(
         asset: String,
@@ -39,9 +47,12 @@ nonisolated struct Holding: Equatable, Sendable, Identifiable, Hashable {
         unrealizedPnLPercent: Double,
         realizedPnL: Double,
         tradingMode: TradingMode = .spot,
+        availableBalance: Double? = nil,
+        lockedBalance: Double? = nil,
         borrowedQuantity: Double? = nil,
         marginAdjustedPnL: Double? = nil,
-        liquidationPrice: Double? = nil
+        liquidationPrice: Double? = nil,
+        borrowingFeeUSDT: Double = 0
     ) {
         self.asset = asset
         self.totalQuantity = totalQuantity
@@ -53,8 +64,11 @@ nonisolated struct Holding: Equatable, Sendable, Identifiable, Hashable {
         self.unrealizedPnLPercent = unrealizedPnLPercent
         self.realizedPnL = realizedPnL
         self.tradingMode = tradingMode
+        self.availableBalance = availableBalance ?? totalQuantity
+        self.lockedBalance = lockedBalance ?? 0
         self.borrowedQuantity = borrowedQuantity
         self.marginAdjustedPnL = marginAdjustedPnL
         self.liquidationPrice = liquidationPrice
+        self.borrowingFeeUSDT = borrowingFeeUSDT
     }
 }

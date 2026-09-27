@@ -9,6 +9,7 @@ struct TradeHistoryState: ViewState {
     var trades: [Trade] = []
     var availableCoins: [String] = []
     var selectedCoin: String?
+    var selectedTradingMode: TradingMode = .spot
     var isLoading: Bool = false
     var error: String?
 

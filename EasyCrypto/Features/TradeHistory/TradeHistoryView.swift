@@ -56,25 +56,40 @@ struct TradeHistoryView: View {
     // MARK: - Filter Chips
 
     private var filterChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                FilterChip(
-                    label: "All",
-                    isSelected: state.selectedCoin == nil
-                ) {
-                    processor.send(.filterByCoin(nil))
-                }
-
-                ForEach(state.availableCoins, id: \.self) { coin in
-                    FilterChip(
-                        label: coin,
-                        isSelected: state.selectedCoin == coin
-                    ) {
-                        processor.send(.filterByCoin(coin))
-                    }
+        VStack(spacing: 8) {
+            // Trading mode segmented control
+            @Bindable var bindable = processor
+            Picker("Trading Mode", selection: $bindable.state.selectedTradingMode) {
+                ForEach(TradingMode.allCases, id: \.self) { mode in
+                    Text(mode.displayName).tag(mode)
                 }
             }
-            .padding(.vertical, 4)
+            .pickerStyle(.segmented)
+            .onChange(of: state.selectedTradingMode) { _, newMode in
+                processor.send(.filterByMode(newMode))
+            }
+
+            // Coin filter chips
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    FilterChip(
+                        label: "All",
+                        isSelected: state.selectedCoin == nil
+                    ) {
+                        processor.send(.filterByCoin(nil))
+                    }
+
+                    ForEach(state.availableCoins, id: \.self) { coin in
+                        FilterChip(
+                            label: coin,
+                            isSelected: state.selectedCoin == coin
+                        ) {
+                            processor.send(.filterByCoin(coin))
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
         }
     }
 
@@ -88,7 +103,7 @@ struct TradeHistoryView: View {
                 toGranularity: .month
             )
         }
-        let total = entries.reduce(0) { $0 + $1.realizedPnL }
+        let total = entries.reduce(0) { $0 + $1.netPnL }
         let sellCount = entries.reduce(0) { $0 + $1.sellCount }
 
         return HStack(alignment: .center) {

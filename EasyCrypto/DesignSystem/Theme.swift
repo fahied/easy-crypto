@@ -15,6 +15,10 @@ enum Theme {
     // Margin-specific colors
     static let marginCross = Color(red: 0.98, green: 0.50, blue: 0.13)      // orange tint
     static let marginIsolated = Color(red: 0.60, green: 0.40, blue: 0.95)     // purple tint
+    static let spotTint = Color(red: 0.20, green: 0.55, blue: 0.85)          // blue tint
+
+    // Row tint opacity for mode differentiation
+    static let rowTintOpacity: CGFloat = 0.06
 
     // Corner radii
     static let cardRadius: CGFloat = 20
@@ -33,12 +37,14 @@ extension Double {
     }
 
     var signedUsdtFormatted: String {
-        let prefix = self >= 0 ? "+" : ""
+        if self == 0 { return usdtFormatted }
+        let prefix = self > 0 ? "+" : "-"
         return "\(prefix)\(usdtFormatted)"
     }
 
     var percentFormatted: String {
-        let prefix = self >= 0 ? "+" : ""
+        if self == 0 { return "0%" }
+        let prefix = self > 0 ? "+" : "-"
         return "\(prefix)\(formatted(.number.precision(.fractionLength(2))))%"
     }
 

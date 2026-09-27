@@ -30,12 +30,39 @@ struct MarginHoldingRow: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
-            header
-            Divider().overlay(Color.white.opacity(0.08))
-            statsStrip
+        HStack(spacing: 0) {
+            modeIndicator
+            VStack(spacing: 8) {
+                header
+                Divider().overlay(Color.white.opacity(0.08))
+                statsStrip
+            }
+            .padding(12)
         }
-        .glassCard(cornerRadius: Theme.smallRadius + 4, padding: 12)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.smallRadius + 4)
+                .fill(.ultraThinMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.smallRadius + 4)
+                .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+        )
+    }
+
+    // MARK: - Mode Indicator
+
+    private var modeIndicator: some View {
+        let color: Color = {
+            switch tradingMode {
+            case .crossMargin: return Theme.marginCross
+            case .isolatedMargin: return Theme.marginIsolated
+            default: return Theme.spotTint
+            }
+        }()
+        return Rectangle()
+            .fill(color)
+            .frame(width: 4)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.smallRadius + 4))
     }
 
     // MARK: - Header
@@ -105,6 +132,9 @@ struct MarginHoldingRow: View {
                 if let liqPrice = liquidationPrice, !liqPrice.isEmpty {
                     stat(label: "Liq. Price", value: "$\(liqPrice)", tint: Theme.loss)
                 }
+                if holding.borrowingFeeUSDT > 1e-6 {
+                    stat(label: "Borrowing Fee", value: holding.borrowingFeeUSDT.signedUsdtFormatted, tint: Theme.loss)
+                }
             }
         }
     }
@@ -128,13 +158,17 @@ struct MarginHoldingRow: View {
 
 // MARK: - Previews
 
-#Preview("Cross Margin") {
+#Preview("Cross Margin with Borrowing Fee") {
     MarginHoldingRow(
         holding: Holding(
             asset: "BTC", totalQuantity: 0.5, weightedAvgBuyPrice: 50000,
             totalInvestedUSDT: 25000, currentPrice: 55000,
             currentValueUSDT: 27500, unrealizedPnL: 2500,
-            unrealizedPnLPercent: 10, realizedPnL: 0
+            unrealizedPnLPercent: 10, realizedPnL: 1000,
+            tradingMode: .crossMargin,
+            borrowedQuantity: 0.3,
+            liquidationPrice: nil,
+            borrowingFeeUSDT: 42.50
         ),
         tradingMode: .crossMargin,
         borrowedQuantity: 0.3,

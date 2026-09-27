@@ -63,6 +63,7 @@ class HoldingsProcessor: Processor {
                 holdings = data.holdings
             }
             state.holdings = holdings.sorted { $0.currentValueUSDT > $1.currentValueUSDT }
+            state.lastRefreshDate = Date()
         } catch {
             state.error = error.localizedDescription
         }
@@ -147,6 +148,7 @@ class HoldingsProcessor: Processor {
 
         var fifoByAsset: [String: FIFOResult] = [:]
         var marginAdjustedPnLByAsset: [String: Double] = [:]
+        var totalBorrowingFeesByAsset: [String: Double] = [:]
 
         for (asset, assetTrades) in tradesByAsset {
             let assetFifoTrades = assetTrades.map(Self.toFIFOTrade)
@@ -161,6 +163,7 @@ class HoldingsProcessor: Processor {
             let interest = perAssetInterest[asset] ?? 0
             let marginResult = fifoCalculator.calculateMargin(assetFifoTrades, [asset: interest])
             marginAdjustedPnLByAsset[asset] = marginResult.marginAdjustedRealizedPnL
+            totalBorrowingFeesByAsset[asset] = marginResult.totalBorrowingFees
         }
 
         let prices = try await priceService.fetchPrices(PriceCatalog.usdtSymbols(from: Array(quantities.keys), exclude: "USDT"))
@@ -171,6 +174,7 @@ class HoldingsProcessor: Processor {
                 prices: prices,
                 fifoByAsset: fifoByAsset,
                 marginAdjustedPnLByAsset: marginAdjustedPnLByAsset,
+                totalBorrowingFeesByAsset: totalBorrowingFeesByAsset,
                 mode: mode
             )
         )
@@ -252,6 +256,7 @@ class HoldingsProcessor: Processor {
         prices: [String: Double],
         fifoByAsset: [String: FIFOResult],
         marginAdjustedPnLByAsset: [String: Double],
+        totalBorrowingFeesByAsset: [String: Double] = [:],
         mode: TradingMode = .spot
     ) -> [Holding] {
         var holdings: [Holding] = []
@@ -263,13 +268,15 @@ class HoldingsProcessor: Processor {
 
             let fifo = fifoByAsset[asset] ?? .empty
             let marginPnL = marginAdjustedPnLByAsset[asset]
+            let borrowingFees = totalBorrowingFeesByAsset[asset] ?? 0
             holdings.append(HoldingFactory.make(
                 asset: asset,
                 quantity: quantity,
                 currentPrice: currentPrice,
                 fifo: fifo,
                 tradingMode: mode,
-                marginAdjustedPnL: marginPnL
+                marginAdjustedPnL: marginPnL,
+                borrowingFeeUSDT: borrowingFees
             ))
         }
         return holdings

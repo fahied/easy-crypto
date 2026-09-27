@@ -278,7 +278,8 @@ class PortfolioProcessor: Processor {
                 asset: asset,
                 quantity: quantity,
                 currentPrice: currentPrice,
-                fifo: fifoResult
+                fifo: fifoResult,
+                borrowingFeeUSDT: 0
             )
         }
     }
@@ -312,7 +313,7 @@ class PortfolioProcessor: Processor {
             let quantity = balance?.netAsset ?? marginResult.totalRemainingQuantity
             let currentPrice = price(of: asset, in: prices)
             let currentValueUSDT = quantity * currentPrice
-            let marginAdjustedPnL: Double? = marginResult.marginAdjustedRealizedPnL > 0 || marginResult.totalBorrowingFees > 0
+            let marginAdjustedPnL: Double? = marginResult.marginAdjustedRealizedPnL != 0 || marginResult.totalBorrowingFees != 0
                 ? marginResult.marginAdjustedRealizedPnL
                 : nil
 
@@ -325,7 +326,8 @@ class PortfolioProcessor: Processor {
                     tradingMode: .crossMargin,
                     borrowedQuantity: balance?.borrowed,
                     marginAdjustedPnL: marginAdjustedPnL,
-                    liquidationPrice: nil
+                    liquidationPrice: nil,
+                    borrowingFeeUSDT: marginResult.totalBorrowingFees
                 ))
             }
         }
@@ -361,7 +363,7 @@ class PortfolioProcessor: Processor {
             let quantity = netAssetByAsset[asset] ?? marginResult.totalRemainingQuantity
             let currentPrice = price(of: asset, in: prices)
             let currentValueUSDT = quantity * currentPrice
-            let marginAdjustedPnL: Double? = marginResult.marginAdjustedRealizedPnL > 0 || marginResult.totalBorrowingFees > 0
+            let marginAdjustedPnL: Double? = marginResult.marginAdjustedRealizedPnL != 0 || marginResult.totalBorrowingFees != 0
                 ? marginResult.marginAdjustedRealizedPnL
                 : nil
 
@@ -373,7 +375,8 @@ class PortfolioProcessor: Processor {
                     fifo: fifoResult,
                     tradingMode: .isolatedMargin,
                     borrowedQuantity: borrowedByAsset[asset],
-                    marginAdjustedPnL: marginAdjustedPnL
+                    marginAdjustedPnL: marginAdjustedPnL,
+                    borrowingFeeUSDT: marginResult.totalBorrowingFees
                 ))
             }
         }

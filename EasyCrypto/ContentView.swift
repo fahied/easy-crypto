@@ -26,7 +26,7 @@ struct ContentView: View {
                     onboardingView
                 }
             } else {
-                ProgressView()
+                ProgressView("Checking credentials…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
@@ -39,7 +39,7 @@ struct ContentView: View {
 
     private var mainTabView: some View {
         TabView(selection: $selectedTab) {
-            Tab("Portfolio", systemImage: "chart.pie.fill", value: .portfolio) {
+            Tab("Portfolio", systemImage: "square.grid.3x3.fill", value: .portfolio) {
                 NavigationStack {
                     PortfolioView(
                         processor: PortfolioProcessor(
@@ -57,7 +57,7 @@ struct ContentView: View {
                 }
             }
 
-            Tab("Holdings", systemImage: "bitcoinsign.circle.fill", value: .holdings) {
+            Tab("Holdings", systemImage: "chart.pie.fill", value: .holdings) {
                 HoldingsTab(
                     apiClient: apiClient,
                     priceService: priceService,
@@ -78,7 +78,7 @@ struct ContentView: View {
                 }
             }
 
-            Tab("Insights", systemImage: "brain.head.profile", value: .insights) {
+            Tab("Insights", systemImage: "chart.line.uptrend.xyaxis", value: .insights) {
                 NavigationStack {
                     InsightsView(
                         processor: InsightsProcessor(
@@ -116,44 +116,13 @@ struct ContentView: View {
     // MARK: - Onboarding
 
     private var onboardingView: some View {
-        NavigationStack {
-            VStack(spacing: 32) {
-                Spacer()
-
-                Image(systemName: "chart.line.uptrend.xyaxis")
-                    .font(.system(size: 64))
-                    .foregroundStyle(Theme.accent)
-
-                VStack(spacing: 8) {
-                    Text("Welcome to EasyCrypto")
-                        .font(.title.bold())
-                    Text("Add your Binance API credentials to get started.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-
-                Spacer()
-
-                SettingsView(
-                    processor: SettingsProcessor(
-                        keychainService: keychainService,
-                        apiClient: apiClient,
-                        modelContainer: modelContainer
-                    )
-                )
-
-                Spacer()
-            }
-            .padding()
-            .navigationTitle("Setup")
-            .onChange(of: hasApiKey) { _, newValue in
-                // Handled by re-check
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .apiKeyChanged)) { _ in
-            checkApiKey()
-        }
+        OnboardingView(
+            processor: SettingsProcessor(
+                keychainService: keychainService,
+                apiClient: apiClient,
+                modelContainer: modelContainer
+            )
+        )
     }
 
     private func checkApiKey() {

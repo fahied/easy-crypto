@@ -348,3 +348,123 @@ struct TradeHistoryMultiFillTests {
         #expect(abs(totalPnL - 6000) < 0.01, "Total P&L should be 6000, got \(totalPnL)")
     }
 }
+
+// MARK: - Day-Total Borrowing Fee Inclusion
+
+@Suite("Given a TradeHistoryProcessor with margin trades that have borrowing fees")
+struct TradeHistoryBorrowingFeeTests {
+
+    @Test("When day has margin sells with borrowing fees, then daily PnL uses marginAdjustedPnL")
+    func dailyPnLIncludesBorrowingFees() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        // Cross-margin buy so we have a lot.
+        context.insert(Trade(
+            binanceTradeId: 1, symbol: "BTCUSDT", asset: "BTC",
+            price: 50000, quantity: 1.0, quoteQuantity: 50000,
+            commission: 0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+            isBuyer: true, orderId: 100, tradingMode: .crossMargin
+        ))
+        // Cross-margin sell with 100 USDT realized P&L and 5 USDT borrowing fee.
+        // marginAdjustedPnL = 95, realizedPnL = 100.
+        context.insert(Trade(
+            binanceTradeId: 2, symbol: "BTCUSDT", asset: "BTC",
+            price: 60000, quantity: 1.0, quoteQuantity: 60000,
+            commission: 5.0, commissionAsset: "USDT",
+            timestamp: Date(timeIntervalSince1970: 1_700_100_000),
+            isBuyer: false, orderId: 101, tradingMode: .crossMargin
+        ))
+        try context.save()
+
+        let processor = TradeHistoryProcessor(modelContainer: container)
+        await processor.handle(.loadHistory)
+
+        let day = Calendar.current.startOfDay(for: Date(timeIntervalSince1970: 1_700_100_000))
+        let entry = try #require(processor.state.dailyPnL[day])
+        // The day total should use marginAdjustedPnL (100 - 5 = 95), not realizedPnL (100).
+        #expect(abs(entry.realizedPnL - 95) < 0.01,
+                "Day total should include borrowing fee: expected 95, got \(entry.realizedPnL)")
+    }
+
+    @Test("When day has only spot trades, then daily PnL uses realizedPnL without fee adjustment")
+    func spotDayPnLUnadjusted() async throws {
+        let container = try makeContainer()
+        try seedTrades(in: container, mode: .spot)
+        let processor = TradeHistoryProcessor(modelContainer: container)
+
+        await processor.handle(.loadHistory)
+
+        let sellDay = Calendar.current.startOfDay(for: Date(timeIntervalSince1970: 1_700_200_000))
+        let entry = try #require(processor.state.dailyPnL[sellDay])
+        // Spot sell: (60000 - 50000) * 0.2 = 2000. No borrowing fee.
+        #expect(abs(entry.realizedPnL - 2000) < 0.01)
+    }
+
+    @Test("When margin sell has commission, then DayTradeDetail includes borrowingFee")
+    func marginDetailIncludesBorrowingFee() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        context.insert(Trade(
+            binanceTradeId: 1, symbol: "BTCUSDT", asset: "BTC",
+            price: 50000, quantity: 1.0, quoteQuantity: 50000,
+            commission: 0.001, commissionAsset: "BTC",
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+            isBuyer: true, orderId: 100, tradingMode: .crossMargin
+        ))
+        context.insert(Trade(
+            binanceTradeId: 2, symbol: "BTCUSDT", asset: "BTC",
+            price: 55000, quantity: 0.5, quoteQuantity: 27500,
+            commission: 2.75, commissionAsset: "BTC",
+            timestamp: Date(timeIntervalSince1970: 1_700_100_000),
+            isBuyer: false, orderId: 101, tradingMode: .crossMargin
+        ))
+        try context.save()
+
+        let processor = TradeHistoryProcessor(modelContainer: container)
+        await processor.handle(.loadHistory)
+
+        let sellDetails = processor.state.details.filter { !$0.isBuyer }
+        #expect(sellDetails.count == 1)
+        let detail = sellDetails[0]
+        #expect(detail.borrowingFee != nil)
+        #expect((detail.borrowingFee ?? 0) > 0,
+                "Borrowing fee should be positive for margin sell with commission")
+    }
+}
+
+// MARK: - BUY/SELL Side Identification
+
+@Suite("Given DayTradeDetail entries for buy and sell trades")
+struct TradeHistorySideIdentificationTests {
+
+    @Test("When trade is a buy, then DayTradeDetail isBuyer is true")
+    func buyTradeIsBuyer() async throws {
+        let container = try makeContainer()
+        try seedTrades(in: container, mode: .spot)
+        let processor = TradeHistoryProcessor(modelContainer: container)
+
+        await processor.handle(.loadHistory)
+
+        let buyDetails = processor.state.details.filter { $0.isBuyer }
+        #expect(buyDetails.count == 2, "Expected 2 buy details, got \(buyDetails.count)")
+        for detail in buyDetails {
+            #expect(detail.asset == "BTC" || detail.asset == "ETH")
+        }
+    }
+
+    @Test("When trade is a sell, then DayTradeDetail isBuyer is false")
+    func sellTradeIsNotBuyer() async throws {
+        let container = try makeContainer()
+        try seedTrades(in: container, mode: .spot)
+        let processor = TradeHistoryProcessor(modelContainer: container)
+
+        await processor.handle(.loadHistory)
+
+        let sellDetails = processor.state.details.filter { !$0.isBuyer }
+        #expect(sellDetails.count == 1, "Expected 1 sell detail, got \(sellDetails.count)")
+        let detail = sellDetails[0]
+        #expect(detail.asset == "BTC")
+        #expect(detail.realizedPnL != nil)
+    }
+}

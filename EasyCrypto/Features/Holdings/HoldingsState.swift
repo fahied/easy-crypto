@@ -11,12 +11,12 @@ struct HoldingsState: ViewState {
     var error: String?
 
     var selectedTradingMode: TradingMode = .spot
+    var lastRefreshDate: Date? = nil
 
-    /// Holdings with a meaningful unrealized gain, best performer first.
-    /// Gains under $1 are dust and stay out of the summary.
+    /// Holdings with any positive unrealized gain, best performer first.
     var profitableHoldings: [Holding] {
         holdings
-            .filter { $0.unrealizedPnL >= 1 }
+            .filter { $0.unrealizedPnL > 0 }
             .sorted { $0.unrealizedPnLPercent > $1.unrealizedPnLPercent }
     }
 

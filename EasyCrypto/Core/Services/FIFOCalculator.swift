@@ -119,7 +119,7 @@ nonisolated func fifoCompute(_ trades: [FIFOTrade]) -> FIFOResult {
                     // Base-asset commission: quantity is reduced, lot price is inflated
                     lotPrice = trade.price * trade.quantity / qty
                     usdtSpent = trade.price * trade.quantity
-                } else if trade.commissionAsset == "USDT" || trade.commission > 0 {
+                } else if trade.commissionAsset == "USDT" {
                     // Quote-asset commission: full quantity received, but total USD
                     // spent includes the commission cost.
                     lotPrice = (trade.price * trade.quantity + trade.commission) / qty
@@ -136,23 +136,27 @@ nonisolated func fifoCompute(_ trades: [FIFOTrade]) -> FIFOResult {
             var sellQty = trade.quantity
             let feeInBaseAsset = trade.commissionAsset == trade.asset ? trade.commission : 0
             var remainingSaleQuantity = trade.quantity
-            sellQty += feeInBaseAsset
+            var lastConsumedLotPrice: Double = 0
 
             while sellQty > 0 && !lots.isEmpty {
                 let consumed = min(lots[0].remainingQuantity, sellQty)
-                let soldPortion = min(consumed, remainingSaleQuantity)
-                let feePortion = consumed - soldPortion
+                let soldPortion = consumed
+                lastConsumedLotPrice = lots[0].price
 
                 realizedPnL += soldPortion * (trade.price - lots[0].price)
-                realizedPnL -= feePortion * lots[0].price
 
                 lots[0].remainingQuantity -= consumed
                 sellQty -= consumed
-                remainingSaleQuantity -= soldPortion
 
                 if lots[0].remainingQuantity <= epsilon {
                     lots.removeFirst()
                 }
+            }
+
+            // Base-asset commission: fee quantity was never in any lot (it was
+            // deducted when the lot was created), so value it at market price.
+            if feeInBaseAsset > epsilon {
+                realizedPnL -= feeInBaseAsset * trade.price
             }
 
             if trade.commissionAsset == "USDT" {
@@ -198,7 +202,7 @@ private func fifoComputeBreakdowns(
                 let lotPrice: Double
                 if trade.commissionAsset == trade.asset {
                     lotPrice = trade.price * trade.quantity / qty
-                } else if trade.commissionAsset == "USDT" || trade.commission > 0 {
+                } else if trade.commissionAsset == "USDT" {
                     lotPrice = (trade.price * trade.quantity + trade.commission) / qty
                 } else {
                     lotPrice = trade.price
@@ -208,7 +212,7 @@ private func fifoComputeBreakdowns(
             breakdowns.append(nil)
         } else {
             let feeInBaseAsset = trade.commissionAsset == trade.asset ? trade.commission : 0
-            var sellQty = trade.quantity + feeInBaseAsset
+            var sellQty = trade.quantity
             var remainingSaleQuantity = trade.quantity
 
             var saleRealizedPnL: Double = 0
@@ -217,22 +221,24 @@ private func fifoComputeBreakdowns(
 
             while sellQty > 0 && !lots.isEmpty {
                 let consumed = min(lots[0].remainingQuantity, sellQty)
-                let soldPortion = min(consumed, remainingSaleQuantity)
-                let feePortion = consumed - soldPortion
+                let soldPortion = consumed
 
                 saleRealizedPnL += soldPortion * (trade.price - lots[0].price)
-                saleRealizedPnL -= feePortion * lots[0].price
-
                 soldQuantity += soldPortion
                 costBasisAmount += soldPortion * lots[0].price
 
                 lots[0].remainingQuantity -= consumed
                 sellQty -= consumed
-                remainingSaleQuantity -= soldPortion
 
                 if lots[0].remainingQuantity <= epsilon {
                     lots.removeFirst()
                 }
+            }
+
+            // Base-asset commission: fee quantity was never in any lot (it was
+            // deducted when the lot was created), so value it at market price.
+            if feeInBaseAsset > epsilon {
+                saleRealizedPnL -= feeInBaseAsset * trade.price
             }
 
             if trade.commissionAsset == "USDT" {
