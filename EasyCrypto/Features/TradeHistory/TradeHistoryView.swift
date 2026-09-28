@@ -57,16 +57,15 @@ struct TradeHistoryView: View {
 
     private var filterChips: some View {
         VStack(spacing: 8) {
-            // Trading mode segmented control
             @Bindable var bindable = processor
-            Picker("Trading Mode", selection: $bindable.state.selectedTradingMode) {
-                ForEach(TradingMode.allCases, id: \.self) { mode in
-                    Text(mode.displayName).tag(mode)
+            Picker("Filter", selection: $bindable.state.selectedFilterMode) {
+                ForEach(HistoryFilterMode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode)
                 }
             }
             .pickerStyle(.segmented)
-            .onChange(of: state.selectedTradingMode) { _, newMode in
-                processor.send(.filterByMode(newMode))
+            .onChange(of: state.selectedFilterMode) { _, newMode in
+                processor.send(.filterByMode(newMode.tradingMode))
             }
 
             // Coin filter chips

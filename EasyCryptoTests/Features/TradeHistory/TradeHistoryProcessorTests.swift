@@ -58,6 +58,7 @@ struct TradeHistoryInitTests {
         #expect(processor.state.trades.isEmpty)
         #expect(processor.state.availableCoins.isEmpty)
         #expect(processor.state.selectedCoin == nil)
+        #expect(processor.state.selectedFilterMode == .overview)
         #expect(processor.state.isLoading == false)
         #expect(processor.state.error == nil)
     }
@@ -286,6 +287,40 @@ struct TradeHistoryAggregationTests {
         #expect(detail.tradingMode == .spot)
         #expect(detail.borrowingFee == 0.0)
         #expect(detail.marginAdjustedPnL == nil)
+    }
+
+    @Test("When filter is Overview, then all modes are included in trades and daily P&L")
+    func overviewIncludesAllModes() async throws {
+        let container = try makeContainer()
+        try seedTrades(in: container, mode: .spot)
+        try seedTrades(in: container, mode: .crossMargin, idOffset: 10)
+        let processor = TradeHistoryProcessor(modelContainer: container)
+
+        // Overview is the default
+        #expect(processor.state.selectedFilterMode == .overview)
+
+        await processor.handle(.loadHistory)
+
+        // All trades from all modes
+        #expect(processor.state.trades.count == 6)
+        let modes = Set(processor.state.details.map(\.tradingMode))
+        #expect(modes.contains(.spot))
+        #expect(modes.contains(.crossMargin))
+    }
+
+    @Test("When switching from Overview to Spot, then only spot trades are shown")
+    func overviewToSpotFilter() async throws {
+        let container = try makeContainer()
+        try seedTrades(in: container, mode: .spot)
+        try seedTrades(in: container, mode: .crossMargin, idOffset: 10)
+        let processor = TradeHistoryProcessor(modelContainer: container)
+
+        await processor.handle(.loadHistory)
+        #expect(processor.state.trades.count == 6)
+
+        await processor.handle(.filterByMode(.spot))
+        #expect(processor.state.trades.count == 3)
+        #expect(processor.state.trades.allSatisfy { $0.tradingModeEnum == .spot })
     }
 }
 

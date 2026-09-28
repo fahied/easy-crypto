@@ -5,11 +5,31 @@
 
 import Foundation
 
+// MARK: - History Filter Mode
+
+enum HistoryFilterMode: String, CaseIterable, Identifiable, Sendable {
+    case overview = "Overview"
+    case spot = "Spot"
+    case crossMargin = "Cross Margin"
+    case isolatedMargin = "Isolated Margin"
+
+    var id: String { rawValue }
+
+    var tradingMode: TradingMode? {
+        switch self {
+        case .overview: nil
+        case .spot: .spot
+        case .crossMargin: .crossMargin
+        case .isolatedMargin: .isolatedMargin
+        }
+    }
+}
+
 struct TradeHistoryState: ViewState {
     var trades: [Trade] = []
     var availableCoins: [String] = []
     var selectedCoin: String?
-    var selectedTradingMode: TradingMode = .spot
+    var selectedFilterMode: HistoryFilterMode = .overview
     var isLoading: Bool = false
     var error: String?
 
